@@ -30,6 +30,6 @@
     "styles/planar.css"
   ],
   "socket": true,
-  "manifest": "https://github.com/Telynor/telys-planar-ornaments/releases/latest/download/module.json",
+  "manifest": "https://github.com/Telynor/telys-planar-ornaments/releases/download/v0.1.0/module.json",
   "download": "https://github.com/Telynor/telys-planar-ornaments/releases/download/v0.1.0/telys-planar-ornaments.zip"
 }
