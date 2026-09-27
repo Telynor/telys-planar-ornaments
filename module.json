@@ -1,0 +1,35 @@
+{
+  "id": "telys-planar-ornaments",
+  "title": "Tely's Planar Ornaments",
+  "description": "Planar Sphere and Link Rope sets, rewards, upgrades and D&D 5e bonuses.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "Telynor"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "5.3.3"
+        }
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/planar.mjs"
+  ],
+  "styles": [
+    "styles/planar.css"
+  ],
+  "socket": true,
+  "manifest": "https://github.com/Telynor/telys-planar-ornaments/releases/latest/download/module.json",
+  "download": "https://github.com/Telynor/telys-planar-ornaments/releases/download/v0.1.0/telys-planar-ornaments.zip"
+}
