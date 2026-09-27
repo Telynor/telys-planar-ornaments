@@ -6,6 +6,6 @@ GM setup: call `TelysPlanar.openConfig()` from a script macro. Choose an existin
 
 Main stat choices follow the Planar Sphere and Link Rope categories. New relics start with no substats. At +3, +6, +9, +12 a distinct substat is added; at +15 one existing substat rolls again. Main values interpolate linearly from configured +0 to +15. Percentage abilities use floor(base + flat + base * combined percentage / 100). Substats exclude the main stat. A stat without a configured target is displayed and exposed through `TelysPlanar.bonuses(actor.items, config)` but does not change D&D mechanics until mapped.
 
-For a custom set, enter stat keys from the GM table or a numeric `system.*` path. Critical range integration requires a target supported by the installed D&D 5e system; configure that target explicitly after confirming its rule fields. This module does not invent a native critical damage score where D&D 5e has none.
+For a custom set, enter stat keys from the GM table or a numeric `system.*` path. Crit rate adjusts the minimum d20 critical threshold for dnd5e attack activities. Crit damage, effect hit/resistance, elemental damage and other HSR-only stats need a GM-defined numeric D&D target to have a mechanical effect; unconfigured values remain visible in the module API.
 
 The base ability values persist in actor data. The sheet toggle previews original scores. Edit the source ability field as usual to apply ASIs; the relic bonuses recalculate on preparation.
