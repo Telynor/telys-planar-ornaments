@@ -21,3 +21,16 @@ test('set bonus requires matching equipped sphere and rope',()=>{
  assert.equal(bonuses([item('sphere'),item('rope')],c).atkPct,12);
  assert.equal(bonuses([item('sphere'),item('rope',false)],c).hpPct,20);
 });
+test('8 crit points yields 13% total crit chance over many attacks without shifting by eight faces',async()=>{
+ const {criticalThreshold}=await import('../scripts/core.mjs');
+ let state=0;const rng=()=>{state=(state+1)%10;return state/10};
+ const thresholds=Array.from({length:10},()=>criticalThreshold(20,8,rng));
+ assert.equal(thresholds.filter(n=>n===18).length,6);
+ assert.equal(thresholds.filter(n=>n===19).length,4);
+ assert.equal(thresholds.reduce((sum,t)=>sum+(21-t)/20,0)/10,.13);
+});
+test('each percentage bonus is floored separately and displayed with its base',async()=>{
+ const {damageBreakdown,arcadiaRate}=await import('../scripts/core.mjs');
+ assert.deepEqual(damageBreakdown(23,[{label:'Arcadia',rate:arcadiaRate(5)},{label:'Other',rate:12}]),{base:23,lines:[{label:'Arcadia',rate:9,bonus:2},{label:'Other',rate:12,bonus:2}],total:27});
+ assert.equal(arcadiaRate(3),12);
+});
