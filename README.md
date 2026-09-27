@@ -9,3 +9,9 @@ Main stat choices follow the Planar Sphere and Link Rope categories. New relics 
 For a custom set, enter stat keys from the GM table or a numeric `system.*` path. Crit rate adjusts the minimum d20 critical threshold for dnd5e attack activities. Crit damage, effect hit/resistance, elemental damage and other HSR-only stats need a GM-defined numeric D&D target to have a mechanical effect; unconfigured values remain visible in the module API.
 
 The base ability values persist in actor data. The sheet toggle previews original scores. Edit the source ability field as usual to apply ASIs; the relic bonuses recalculate on preparation.
+
+## Percentage damage and critical rate (preview)
+
+With Midi-QOL active, damage percentages from equipped custom two-piece bonuses with stat key `damagePct` and Arcadia of Woven Dreams are added after the original damage roll, before target mitigation. Each source contributes `floor(base rolled damage × rate / 100)`. The original dice are not rerolled. A separate breakdown in chat lists the rolled base, each set and its integer bonus, and the total sent to the damage workflow. For example, 23 base damage and Arcadia +9% gives +2 and 25 before resistance. Healing is excluded. This applies through Midi-QOL's evaluated-damage workflow; direct manual HP adjustments are unaffected.
+
+Critical-rate bonuses are percentage points, not additional d20 faces. The attack threshold is chosen once before each d20 roll: +8% changes a natural-20 baseline (5%) into 19–20 (10%) on 40% of attacks and 18–20 (15%) on 60% of attacks, averaging 13%. Individual attack rolls still have a whole-number d20 threshold.
