@@ -1,4 +1,5 @@
-import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,random,generate,advance,bonuses,mainValue,splitInputs} from "./core.mjs";
+import {registerDamageHooks} from "./damage.mjs";
+import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,random,generate,advance,bonuses,mainValue,criticalThreshold,splitInputs} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
 const config=()=>foundry.utils.mergeObject(clone(DEFAULT_CONFIG),clone(game.settings.get(ID,"config")),{inplace:false});
@@ -145,19 +146,6 @@ function patchCharacter(){const prototype=CONFIG.Actor.dataModels.character?.pro
   const original=prototype.prepareDerivedData;prototype.prepareDerivedData=function(...args){applyBonuses(this);return original.apply(this,args)};
   prototype._telysPlanarPatched=true;
 }
-async function patchCriticalRange(){
-  try{
-    const {default: AttackData}=await import('/systems/dnd5e/module/data/activity/attack-data.mjs');
-    const descriptor=Object.getOwnPropertyDescriptor(AttackData.prototype,'criticalThreshold');
-    if(!descriptor?.get||AttackData.prototype._telysPlanarCritPatched)return;
-    Object.defineProperty(AttackData.prototype,'criticalThreshold',{configurable:true,get(){
-      const normal=descriptor.get.call(this),rate=number(this.actor?._planarBonuses?.critRate);
-      if(rate<=0)return normal;
-      return Math.min(normal,Math.max(2,20-Math.floor(rate/Math.max(.01,number(config().crit.pointsPerRange,1)))));
-    }});
-    AttackData.prototype._telysPlanarCritPatched=true;
-  }catch(error){console.warn(`${ID} | Critical range integration unavailable`,error)}
-}
 function injectHub(app,html){if(app.id!=="tsru-hub")return;
   const root=html[0]??html;if(!root||root.querySelector(".tp-hub-entry"))return;
   const button=document.createElement("button");button.type="button";button.className="tp-hub-entry";button.innerHTML='<i class="fas fa-circle-nodes"></i> Upgrade Planar Relics';
@@ -179,7 +167,13 @@ function injectSheet(app,html){const actor=app.actor;if(actor?.type!=="character
 export function open(actorId){const app=window.TelysPlanar.app??new PlanarWindow();window.TelysPlanar.app=app;app.actorId=actorId||app.actorId||token()?.id;app.render(true);return app}
 Hooks.once("init",()=>{game.settings.register(ID,"config",{scope:"world",config:false,type:Object,default:clone(DEFAULT_CONFIG)});patchCharacter()});
 Hooks.once("ready",()=>{
-  patchCharacter();patchCriticalRange();game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
+  patchCharacter();registerDamageHooks(config);
+  Hooks.on("dnd5e.preRollAttackV2",rollConfig=>{
+    const actor=rollConfig.subject?.actor,rate=number(actor?._planarBonuses?.critRate);
+    if(!actor||rate<=0||!rollConfig.rolls?.[0])return;
+    const opts=rollConfig.rolls[0].options??={};
+    opts.criticalSuccess=criticalThreshold(opts.criticalSuccess??rollConfig.subject.criticalThreshold??20,rate);
+  });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
   window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,app:null};
   Hooks.on("renderApplication",injectHub);
   Hooks.on("renderActorSheet",injectSheet);
