@@ -25,7 +25,7 @@ async function consume(actor,lines){
   if(updates.length)await actor.updateEmbeddedDocuments("Item",updates);
   if(deletes.length)await actor.deleteEmbeddedDocuments("Item",deletes);
 }
-async function processRequest({op,data,user}){
+async function processRequest({op,data,user},remote=false){
   if(!game.user.isGM)return;
   const requester=game.users.get(user);if(!requester)return;
   const actor=game.actors.get(data.actorId);
@@ -35,7 +35,7 @@ async function processRequest({op,data,user}){
   try{
     const cfg=config();
     if(op==="generate"){
-      if(!requester.isGM)throw Error("Only GMs can generate relics.");
+      if(remote||!requester.isGM)throw Error("Only a local GM can generate relics.");
       const set=cfg.sets.find(s=>s.id===data.setId);if(!set)throw Error("Unknown set.");
       const r=generate(set,data.slot,cfg);
       await actor.createEmbeddedDocuments("Item",[{name:`${set.name} ${r.slot==="sphere"?"Planar Sphere":"Link Rope"}`,type:"loot",img:r.slot==="sphere"?(set.sphereImage||"icons/magic/earth/orb-stone-smoke-teal.webp"):(set.ropeImage||"icons/commodities/cloth/cord-rope-gold.webp"),system:{quantity:1},flags:{[ID]:{relic:r}}}]);
@@ -179,7 +179,7 @@ function injectSheet(app,html){const actor=app.actor;if(actor?.type!=="character
 export function open(actorId){const app=window.TelysPlanar.app??new PlanarWindow();window.TelysPlanar.app=app;app.actorId=actorId||app.actorId||token()?.id;app.render(true);return app}
 Hooks.once("init",()=>{game.settings.register(ID,"config",{scope:"world",config:false,type:Object,default:clone(DEFAULT_CONFIG)});patchCharacter()});
 Hooks.once("ready",()=>{
-  patchCharacter();patchCriticalRange();game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg)});
+  patchCharacter();patchCriticalRange();game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
   window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,app:null};
   Hooks.on("renderApplication",injectHub);
   Hooks.on("renderActorSheet",injectSheet);
