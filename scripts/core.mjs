@@ -1,10 +1,10 @@
 export const ID = "telys-planar-ornaments";
 export const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
-export const STATS = ["hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect", "energyRegen", "healing", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
+export const STATS = ["hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect", "energyRegen", "healing", "damagePct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
 export const SPHERE = ["hpPct", "atkPct", "defPct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
 export const ROPE = ["hpPct", "atkPct", "defPct", "breakEffect", "energyRegen"];
 export const SUBSTATS = ["hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect"];
-export const LABELS = {hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP %",atkPct:"ATK %",defPct:"DEF %",speed:"Speed",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate %",effectRes:"Effect RES %",breakEffect:"Break Effect %",energyRegen:"Energy Regeneration %",healing:"Outgoing Healing %",physical:"Physical Damage %",fire:"Fire Damage %",ice:"Ice Damage %",wind:"Wind Damage %",lightning:"Lightning Damage %",quantum:"Quantum Damage %",imaginary:"Imaginary Damage %"};
+export const LABELS = {hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP %",atkPct:"ATK %",defPct:"DEF %",speed:"Speed",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate %",effectRes:"Effect RES %",breakEffect:"Break Effect %",energyRegen:"Energy Regeneration %",healing:"Outgoing Healing %",damagePct:"Damage %",physical:"Physical Damage %",fire:"Fire Damage %",ice:"Ice Damage %",wind:"Wind Damage %",lightning:"Lightning Damage %",quantum:"Quantum Damage %",imaginary:"Imaginary Damage %"};
 export const DEFAULT_CONFIG = {
   sets:[],currencyItem:"",creditCostPerXp:1,xpPerLevel:100,
   materials:[], // {uuid,xp}: owned inventory items and XP per copy
@@ -57,3 +57,19 @@ export function bonuses(items,config){
   return result;
 }
 export function splitInputs(text){return String(text??"").split(",").map(s=>s.trim()).filter(Boolean)}
+
+export function damageBreakdown(base,effects){
+  const original=Math.max(0,number(base));
+  const lines=effects.filter(e=>number(e.rate)>0).map(e=>({label:String(e.label),rate:number(e.rate),bonus:Math.floor(original*number(e.rate)/100)}));
+  return {base:original,lines,total:original+lines.reduce((sum,line)=>sum+line.bonus,0)};
+}
+export function arcadiaRate(allies){
+  const diff=Math.floor(number(allies,4))-4;
+  return diff>0?Math.min(4,diff)*9:Math.min(3,Math.abs(diff))*12;
+}
+export function criticalThreshold(baseThreshold, bonusPoints, rng=Math.random){
+  const base=Math.max(2,Math.min(20,Math.floor(number(baseThreshold,20))));
+  const faces=Math.max(0,number(bonusPoints))/5;
+  const full=Math.floor(faces),fraction=Math.round((faces-full)*1e10)/1e10;
+  return Math.max(2,base-full-(rng()<fraction?1:0));
+}
