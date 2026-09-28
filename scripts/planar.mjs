@@ -250,9 +250,17 @@ function openGenerator(){
   const content=`<form class="tp-generate-form"><label>Planar set <select name="setId">${sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select name="slot"><option value="random">Random Sphere or Link Rope</option><option value="sphere">Sphere</option><option value="rope">Link Rope</option></select></label></form>`;
   return new Dialog({title:'Generate Planar Relic',content,buttons:{generate:{icon:'<i class="fas fa-dice"></i>',label:'Generate',callback:html=>{const form=html[0].querySelector('.tp-generate-form');if(!form)return;const data=Object.fromEntries(new FormData(form));if(data.slot==='random')data.slot=Math.random()<0.5?'sphere':'rope';void send('generate',data)}}},default:'generate'}).render(true);
 }
+function sheetRoot(app,html){
+  const element=html?.jquery?html[0]:html instanceof HTMLElement?html:null;
+  const appElement=app?.element?.jquery?app.element[0]:app?.element;
+  const enclosing=element?.closest?.('.application, .window-app, [data-appid]');
+  const candidates=[element,enclosing,appElement].filter(x=>x instanceof HTMLElement);
+  return candidates.find(x=>x.querySelector('nav.tabs[data-group="primary"], nav.sheet-tabs[data-group="primary"], .tabs-right nav.tabs')&&x.querySelector('.tab-body, .sheet-body, [data-application-part="body"]'))??enclosing??appElement??element;
+}
 function injectHub(app,html){
-  if(app.id!=="tsru-hub")return;
-  const root=html[0]??html,field=root?.querySelector('.tsru-phone-button-field');if(!field)return;
+  const element=html?.jquery?html[0]:html instanceof HTMLElement?html:null;
+  const root=[element,app?.element?.jquery?app.element[0]:app?.element].find(x=>x instanceof HTMLElement&&x.querySelector('.tsru-phone-button-field'));
+  const field=root?.querySelector('.tsru-phone-button-field');if(!field)return;
   // Remove the old full-width control, including one inserted later by a stale hook.
   const removeLegacy=()=>root.querySelectorAll('.tp-hub-entry,.tp-gm-designer').forEach(element=>element.remove());
   removeLegacy();
@@ -275,15 +283,15 @@ function injectHub(app,html){
 }
 function injectPlanarSheetTab(app,root,actor){
   if(root.querySelector('.tp-sheet-tab')||!editable(actor))return;
-  const nav=root.querySelector('nav.sheet-tabs, .sheet-navigation nav.tabs, nav.tabs, [role="tablist"]');
-  const body=root.querySelector('.sheet-body, .sheet-content, .tab-content, .sheet-main');
+  const nav=root.querySelector('nav.tabs[data-group="primary"], nav.sheet-tabs[data-group="primary"], .tabs-right nav.tabs, nav.tabs, [role="tablist"]');
+  const body=root.querySelector('.tab-body, .sheet-body, [data-application-part="body"], .sheet-content, .tab-content, .sheet-main');
   if(!nav||!body){
     const header=root.querySelector('.window-header, .sheet-header, header');if(!header)return;
     const button=document.createElement('button');button.type='button';button.className='tp-sheet-tab';button.textContent='Planar Relics';
     button.addEventListener('click',event=>{event.preventDefault();open(actor.id)});header.append(button);return;
   }
   const group=nav.dataset.group||nav.querySelector('[data-group]')?.dataset.group||'primary';
-  const tab=document.createElement('a');tab.className='item tp-sheet-tab';tab.dataset.tab='telys-planar';tab.dataset.group=group;tab.setAttribute('role','tab');tab.innerHTML='<i class="fas fa-circle-nodes"></i> Planar Relics';
+  const tab=document.createElement('a');tab.className='item control tp-sheet-tab';tab.dataset.action='tab';tab.dataset.tab='telys-planar';tab.dataset.group=group;tab.setAttribute('role','tab');tab.innerHTML='<i class="fas fa-circle-nodes"></i> Planar Relics';
   const panel=document.createElement('section');panel.className='tab tp-sheet-panel';panel.dataset.tab='telys-planar';panel.dataset.group=group;panel.style.display='none';
   const cfg=config(),pieces=storedRelics().map(asItem),equipped=equippedRelics(actor);
   const selected=cfg.sets.find(s=>equipped.some(i=>relic(i)?.setId===s.id))??cfg.sets[0];
@@ -306,8 +314,8 @@ function injectPlanarSheetTab(app,root,actor){
   nav.addEventListener('click',event=>{if(event.target.closest('.tp-sheet-tab'))return;planarSheetOpen.set(app,false);tab.classList.remove('active');panel.classList.remove('active');panel.style.display='none'},true);
   nav.append(tab);body.append(panel);if(planarSheetOpen.get(app))activate();
 }
-function injectSheet(app,html){const actor=app.actor;if(actor?.type!=="character")return;
-  const root=html[0]??html;if(!root)return;
+function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.documentName!=='Actor'||actor.type!=="character")return;
+  const root=sheetRoot(app,html);if(!root)return;
   injectPlanarSheetTab(app,root,actor);
   if(root.querySelector(".tp-ability-toggle"))return;
   const fields=originalFields.get(actor),b=actor._planarBonuses;if(!fields||!Object.keys(b??{}).length)return;
@@ -361,8 +369,9 @@ Hooks.once("ready",async()=>{
   });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
   window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,app:null};
   Hooks.on("renderApplication",injectHub);
-  Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectSheet(app,html)});
+  Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectSheet(app,html);requestAnimationFrame(()=>{injectHub(app,app.element);injectSheet(app,app.element)})});
   Hooks.on("renderActorSheet",injectSheet);
+  Hooks.on('renderCharacterActorSheet',injectSheet);
   Hooks.on('renderActorSheetV2',injectSheet);
   Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.prepareData();if(game.user.isGM)void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
   if(game.user.isGM)for(const actor of game.actors)void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));
