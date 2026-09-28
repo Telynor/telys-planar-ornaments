@@ -209,14 +209,26 @@ function syncPlanarStats(actor){
   void next.finally(()=>{if(statSyncs.get(actor.id)===next)statSyncs.delete(actor.id)}).catch(()=>{});
   return next;
 }
-export function planarStatChanges(b,cfg){
+export function planarStatChanges(b,cfg,actor){
   const changes=[],mode=CONST.ACTIVE_EFFECT_MODES.ADD;
   const add=(key,value)=>{if(Number.isFinite(value)&&value!==0)changes.push({key,mode,value:String(value),priority:30})};
   for(const key of ABILITIES)add(`system.abilities.${key}.value`,number(b[key]));
-  for(const [stat,paths] of Object.entries({atkPct:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),atkFlat:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),hpPct:['system.attributes.hp.bonuses.overall'],hpFlat:['system.attributes.hp.bonuses.overall'],defPct:['system.attributes.ac.bonus'],defFlat:['system.attributes.ac.bonus']}))
+  for(const [stat,paths] of Object.entries({atkPct:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),atkFlat:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),hpPct:['system.attributes.hp.bonuses.overall'],hpFlat:['system.attributes.hp.bonuses.overall']}))
     for(const path of paths)add(path,Math.floor(number(b[stat])));
+  const acBonus=Math.floor(number(b.defPct)+number(b.defFlat));
+  const originalAc=foundry.utils.getProperty(actor?._source,'system.attributes.ac.bonus');
+  if(acBonus){
+    if(originalAc==null||Number.isFinite(Number(originalAc)))changes.push({key:'system.attributes.ac.bonus',mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(number(originalAc)+acBonus),priority:30});
+    else add('system.attributes.ac.bonus',acBonus);
+  }
+  const originalWalk=number(foundry.utils.getProperty(actor?._source,'system.attributes.movement.walk'));
+  const speedBonus=cfg.mapping.speed==='system.attributes.movement.walk'?number(b.speed)*number(cfg.flat?.speed,1):0;
+  const speedPercent=cfg.mapping.speedPct==='system.attributes.movement.walk'?number(b.speedPct)*number(cfg.flat?.speedPct,1):0;
+  const movementBonus=speedBonus+Math.floor(originalWalk*speedPercent/100);
+  if(movementBonus)changes.push({key:'system.attributes.movement.walk',mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(originalWalk+movementBonus),priority:30});
   for(const [stat,value] of Object.entries(b)){
     if([...ABILITIES,'atkPct','atkFlat','hpPct','hpFlat','defPct','defFlat','breakEffect','energyRegen'].includes(stat))continue;
+    if(['speed','speedPct'].includes(stat)&&cfg.mapping[stat]==='system.attributes.movement.walk')continue;
     if(stat==='savingThrow'){for(const key of ABILITIES)add(`system.abilities.${key}.bonuses.save`,Math.floor(number(value)));continue}
     if(stat==='effectHit'){for(const type of ['msak','rsak'])add(`system.bonuses.${type}.attack`,Math.floor(number(value)));continue}
     if(stat==='initiativeBonus'){add('system.attributes.init.bonus',Math.floor(number(value)));continue}
@@ -230,7 +242,7 @@ async function applyPlanarStatEffect(actor){
   if(!game.user.isGM||actor?.type!=='character')return;
   const cfg=config(),b=bonuses(allItems(actor),cfg);
   for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
-  const changes=planarStatChanges(b,cfg),existing=actor.effects.find(e=>e.getFlag(ID,'statBonus'));
+  const changes=planarStatChanges(b,cfg,actor),existing=actor.effects.find(e=>e.getFlag(ID,'statBonus'));
   if(!changes.length){if(existing)await existing.delete();return}
   if(existing){if(JSON.stringify(existing.changes)!==JSON.stringify(changes))await existing.update({changes});return}
   await actor.createEmbeddedDocuments('ActiveEffect',[{name:'Planar ornament bonuses',img:'icons/magic/light/orb-sphere-gold.webp',changes,disabled:false,flags:{[ID]:{statBonus:true}}}]);
@@ -447,13 +459,13 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
   const frame=root.closest('.application, .window-app')??root;
   injectPlanarSheetTab(app,root,actor);
   if(frame.querySelector('.tp-ability-toggle'))return;
-  const fields=Object.fromEntries(ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]));
+  const fields=Object.fromEntries([...ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]),['system.attributes.movement.walk',foundry.utils.getProperty(actor._source,'system.attributes.movement.walk')],['system.attributes.ac.bonus',foundry.utils.getProperty(actor._source,'system.attributes.ac.bonus')]]);
   const holder=document.createElement("button");holder.type="button";holder.className="tp-ability-toggle";
   const rows=[];
   for(const [name,base] of Object.entries(fields)){
     const input=[...root.querySelectorAll("input[name]")].find(el=>el.name===name);
     if(!input||input.type==="hidden")continue;
-    rows.push({input,base:String(base),buffed:String(foundry.utils.getProperty(actor,name)??input.value),locked:input.readOnly,disabled:input.disabled});
+    rows.push({input,base:String(base??0),buffed:String(foundry.utils.getProperty(actor,name)??input.value),locked:input.readOnly,disabled:input.disabled});
   }
   for(const [field,label] of [["breakEffectScore","Break Effect ability score"],["regenScore","Energy Regen ability score"]]){
     const input=root.querySelector(`input[aria-label="${label}"]`);

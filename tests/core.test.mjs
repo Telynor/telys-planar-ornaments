@@ -82,15 +82,19 @@ test('elemental sphere damage requires the wearer and damage component to match'
 test('equipped relic stats produce actor effect changes for scores and rolls',async()=>{
  globalThis.Application=class {};
  globalThis.Hooks={once:()=>{}};
- globalThis.CONST={ACTIVE_EFFECT_MODES:{ADD:2}};
+ globalThis.CONST={ACTIVE_EFFECT_MODES:{ADD:2,OVERRIDE:5}};
+ globalThis.foundry={utils:{getProperty:(object,path)=>path.split('.').reduce((value,key)=>value?.[key],object)}};
  const {planarStatChanges,originalSaveTotal}=await import('../scripts/planar.mjs');
- const changes=planarStatChanges({str:2,atkPct:3,hpPct:20,defPct:4,speed:5,savingThrow:1},DEFAULT_CONFIG);
+ const actor={_source:{system:{attributes:{movement:{walk:30},ac:{bonus:2}}}}};
+ const changes=planarStatChanges({str:2,atkPct:3,hpPct:20,defPct:4,speed:5,savingThrow:1},DEFAULT_CONFIG,actor);
  const find=key=>changes.find(change=>change.key===key)?.value;
  assert.equal(find('system.abilities.str.value'),'2');
  assert.equal(find('system.bonuses.mwak.attack'),'3');
  assert.equal(find('system.attributes.hp.bonuses.overall'),'20');
- assert.equal(find('system.attributes.ac.bonus'),'4');
- assert.equal(find('system.attributes.movement.walk'),'5');
+ assert.equal(find('system.attributes.ac.bonus'),'6');
+ assert.equal(find('system.attributes.movement.walk'),'35');
+ assert.equal(changes.find(change=>change.key==='system.attributes.ac.bonus').mode,5);
+ assert.equal(changes.find(change=>change.key==='system.attributes.movement.walk').mode,5);
  assert.equal(find('system.abilities.wis.bonuses.save'),'1');
  assert.equal(originalSaveTotal(7,14,16,2),4);
  assert.equal(originalSaveTotal(4,14,14,1),3);
