@@ -349,12 +349,29 @@ function injectPlanarSheetTab(app,root,actor){
     if(game.user.isGM)app.render(false);
   }));
   const otherTabs=[...nav.querySelectorAll('[data-tab]')];
-  const otherPanels=[...body.querySelectorAll(`.tab[data-group="${group}"]`)].filter(el=>el!==panel);
-  const deactivate=()=>{planarSheetOpen.set(app,false);tab.classList.remove('active');panel.classList.remove('active');panel.hidden=true};
-  const activate=()=>{otherTabs.forEach(el=>el.classList.remove('active'));otherPanels.forEach(el=>el.classList.remove('active'));tab.classList.add('active');panel.classList.add('active');panel.hidden=false};
+  const deactivate=()=>{
+    if(panel.hidden&&!panel.classList.contains('active'))return;
+    planarSheetOpen.set(app,false);tab.classList.remove('active');panel.classList.remove('active');
+    panel.hidden=true;panel.inert=true;panel.style.setProperty('display','none','important');
+  };
+  const activate=()=>{
+    otherTabs.forEach(el=>el.classList.remove('active'));
+    // HSR inserts its settings tab elsewhere in the sheet root, outside .tab-body.
+    // Its own tab handler clears every primary panel and the tsru-tab-open mode.
+    root.querySelectorAll(`.tab[data-group="${group}"]`).forEach(el=>el.classList.remove('active'));
+    root.classList.remove('tsru-tab-open');
+    tab.classList.add('active');panel.classList.add('active');panel.hidden=false;panel.inert=false;panel.style.removeProperty('display');
+    if(app.tabGroups)app.tabGroups[group]='telys-planar';
+  };
   tab.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();planarSheetOpen.set(app,true);activate()});
   root.addEventListener('click',event=>{const target=event.target.closest('[data-tab], [data-action="tab"]');if(target&&!target.closest('.tp-sheet-tab'))deactivate()},true);
-  nav.append(tab);body.append(panel);if(planarSheetOpen.get(app))activate();
+  nav.append(tab);body.append(panel);
+  const observer=new MutationObserver(()=>{
+    const anotherTab=[...nav.querySelectorAll('[data-tab]')].some(control=>control!==tab&&(control.classList.contains('active')||control.getAttribute('aria-selected')==='true'));
+    if(anotherTab)deactivate();
+  });
+  observer.observe(nav,{subtree:true,attributes:true,attributeFilter:['class','aria-selected']});
+  if(planarSheetOpen.get(app))activate();else deactivate();
 }
 function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.documentName!=='Actor'||actor.type!=="character")return;
   const root=sheetRoot(app,html);if(!root)return;
