@@ -1,6 +1,6 @@
 import {registerDamageHooks} from "./damage.mjs";
 import {CANONICAL_SETS} from "./catalog.mjs";
-import {visualHtml,layoutFor,pieceStyle} from "./visuals.mjs";
+import {visualHtml,layoutFor,pieceStyle,applyLayoutToAll} from "./visuals.mjs";
 import {dynamicStats,registerConditionHooks,firstAttackBonus} from './effects.mjs';
 import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,random,generate,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
@@ -87,7 +87,7 @@ class PlanarWindow extends FormApplication{
     const gm=game.user.isGM?`<nav><button type="button" data-op="settings">GM Configuration</button><button type="button" data-op="designer">Set Display Designer</button><label>Trailblaze Companion <input type="checkbox" data-trailblaze ${a?.getFlag(ID,"trailblazeCompanion")?"checked":""}></label><select data-set>${cfg.sets.map(s=>htmlOption(s.id,s.name)).join("")}</select><select data-slot><option value="sphere">Sphere</option><option value="rope">Rope</option></select><button type="button" data-op="generate">Generate random planar reward</button></nav>`:"";
     const activeSet=cfg.sets.find(s=>list.some(i=>{const r=relic(i);return r?.setId===s.id&&r.equipped&&r.slot==='sphere'})&&list.some(i=>{const r=relic(i);return r?.setId===s.id&&r.equipped&&r.slot==='rope'}));
     const chosen=cfg.sets.find(s=>s.id===this.selectedSetId)??activeSet??cfg.sets[0];
-    const preview=`<div class="tp-stage">${visualHtml(chosen,esc,{equipped:activeSet?.id===chosen?.id})}<div class="tp-stage-info"><h3>Planar Ornaments</h3><label>Display set <select data-preview-set>${cfg.sets.map(s=>htmlOption(s.id,s.name,chosen?.id)).join('')}</select></label><p>${esc(chosen?.adaptedEffect??'Equip a matching Sphere and Link Rope for the two-piece bonus.')}</p><p>${activeSet?.id===chosen?.id?'Matching set equipped':'Equip matching pieces to activate this set.'}</p></div></div>`;
+    const preview=`<div class="tp-stage">${visualHtml(chosen,esc,{equipped:activeSet?.id===chosen?.id,defaultLayout:cfg.defaultLayout})}<div class="tp-stage-info"><h3>Planar Ornaments</h3><label>Display set <select data-preview-set>${cfg.sets.map(s=>htmlOption(s.id,s.name,chosen?.id)).join('')}</select></label><p>${esc(chosen?.adaptedEffect??'Equip a matching Sphere and Link Rope for the two-piece bonus.')}</p><p>${activeSet?.id===chosen?.id?'Matching set equipped':'Equip matching pieces to activate this set.'}</p></div></div>`;
     return $(`<div class="tp-window tp-main"><header><h2>Planar Ornaments</h2><select data-actor>${actors().map(x=>htmlOption(x.id,x.name,a?.id)).join("")}</select></header>${gm}${preview}<div class="tp-grid">${cards||"<p>No planar ornaments in this character’s inventory.</p>"}</div></div>`)}
   activateListeners(html){super.activateListeners(html);html.find("[data-actor]").on("change",e=>{this.actorId=e.target.value;this.render(false)});
     html.find("[data-preview-set]").on("change",e=>{this.selectedSetId=e.currentTarget.value;this.render(false)});
@@ -108,16 +108,17 @@ class PlanarWindow extends FormApplication{
 class PlanarDesigner extends FormApplication{
   static get defaultOptions(){return foundry.utils.mergeObject(super.defaultOptions,{id:'telys-planar-designer',title:'Planar Set Display Designer',width:720,height:750,resizable:true})}
   async _renderInner(){if(!game.user.isGM)return $('<p>GM access required.</p>');
-    const sets=config().sets,set=sets.find(s=>s.id===this.setId)??sets[0];this.setId=set?.id;
-    const preview={...set,layout:this.layouts?.[set.id]??set.layout};const layout=layoutFor(preview);
-    const controls=['sphere','rope'].map(slot=>`<fieldset data-layout-slot="${slot}"><legend>${slot==='sphere'?'Sphere':'Link Rope'}</legend>${['x','y','scale'].map(key=>`<label>${key.toUpperCase()} <input type="number" step="0.1" data-layout-value="${slot}:${key}" value="${number(layout[slot][key])}"></label>`).join('')}</fieldset>`).join('');
-    return $(`<div class="tp-window tp-designer"><label>Planar set <select data-designer-set>${sets.map(s=>htmlOption(s.id,s.name,set?.id)).join('')}</select></label><p>Drag the Sphere or Rope to place it. Scroll over either image to resize it.</p>${visualHtml(preview,esc,{equipped:true,designer:true})}<div class="tp-designer-controls">${controls}</div><button type="button" data-designer-save>Save set layouts</button></div>`)
+    const cfg=config(),sets=cfg.sets,set=sets.find(s=>s.id===this.setId)??sets[0];this.setId=set?.id;this.defaults??=clone(cfg.defaultLayout);
+    const preview={...set,layout:this.layouts?.[set.id]??set.layout};const layout=layoutFor(preview,this.defaults);
+    const controls=['sphere','rope'].map(slot=>`<fieldset data-layout-slot="${slot}"><legend>${slot==='sphere'?'Sphere':'Link Rope'}</legend>${['x','y','scale'].map(key=>`<label>${key.toUpperCase()} <input type="number" step="0.1" data-layout-value="${slot}:${key}" value="${number(layout[slot][key])}"></label>`).join('')}<button type="button" data-apply-default="${slot}">Apply ${slot==='sphere'?'Sphere':'Link Rope'} to all sets</button></fieldset>`).join('');
+    return $(`<div class="tp-window tp-designer"><label>Planar set <select data-designer-set>${sets.map(s=>htmlOption(s.id,s.name,set?.id)).join('')}</select></label><p>Drag the Sphere or Rope to place it. Scroll over either image to resize it. Apply either piece to all sets to make its layout the default for new sets, too.</p>${visualHtml(preview,esc,{equipped:true,designer:true,defaultLayout:this.defaults})}<div class="tp-designer-controls">${controls}</div><button type="button" data-designer-save>Save set layouts</button></div>`)
   }
   activateListeners(html){super.activateListeners(html);if(!game.user.isGM)return;
-    const remember=()=>{this.layouts??={};const set=this.layouts[this.setId]??=layoutFor(config().sets.find(s=>s.id===this.setId));for(const input of html[0].querySelectorAll('[data-layout-value]')){const [slot,key]=input.dataset.layoutValue.split(':');set[slot][key]=number(input.value,set[slot][key])}};
+    const remember=()=>{this.layouts??={};const set=this.layouts[this.setId]??=layoutFor(config().sets.find(s=>s.id===this.setId),this.defaults);for(const input of html[0].querySelectorAll('[data-layout-value]')){const [slot,key]=input.dataset.layoutValue.split(':');set[slot][key]=number(input.value,set[slot][key])}};
     const paint=()=>{const layout=this.layouts?.[this.setId];if(!layout)return;for(const slot of ['sphere','rope']){const image=html[0].querySelector(`.tp-${slot}`);if(image)image.style.cssText=pieceStyle(layout[slot])}};
     html.find('[data-designer-set]').on('change',e=>{remember();this.setId=e.currentTarget.value;this.render(false)});
     html.find('[data-layout-value]').on('input',()=>{remember();paint()});
+    html.find('[data-apply-default]').on('click',event=>{remember();const slot=event.currentTarget.dataset.applyDefault;const sets=config().sets.map(set=>({...set,layout:this.layouts?.[set.id]??set.layout}));const result=applyLayoutToAll(sets,slot,this.layouts[this.setId][slot],this.defaults);this.defaults=result.defaults;this.layouts=Object.fromEntries(result.sets.map(set=>[set.id,set.layout]));ui.notifications.info(`${slot==='sphere'?'Sphere':'Link Rope'} layout applied to all planar sets. Save set layouts to keep it.`)});
     const orbit=html[0].querySelector('.tp-orbit');
     orbit?.querySelectorAll('[data-drag-piece]').forEach(image=>{
       const slot=image.dataset.dragPiece;if(!slot)return;
@@ -125,7 +126,7 @@ class PlanarDesigner extends FormApplication{
       image.addEventListener('pointermove',event=>{if(!image.hasPointerCapture(event.pointerId))return;remember();const rect=orbit.getBoundingClientRect(),part=this.layouts[this.setId][slot];part.x=Math.max(0,Math.min(100,(event.clientX-rect.left)/rect.width*100));part.y=Math.max(0,Math.min(100,(event.clientY-rect.top)/rect.height*100));paint();for(const key of ['x','y'])html[0].querySelector(`[data-layout-value="${slot}:${key}"]`).value=part[key].toFixed(1)});
       image.addEventListener('wheel',event=>{event.preventDefault();remember();const part=this.layouts[this.setId][slot];part.scale=Math.max(.2,Math.min(5,part.scale+(event.deltaY<0?.1:-.1)));paint();html[0].querySelector(`[data-layout-value="${slot}:scale"]`).value=part.scale.toFixed(1)},{passive:false});
     });
-    html.find('[data-designer-save]').on('click',async()=>{remember();const updated=config();updated.sets=updated.sets.map(set=>this.layouts?.[set.id]?{...set,layout:this.layouts[set.id]}:set);await game.settings.set(ID,'config',updated);ui.notifications.info('Planar set layouts saved.');this.close()});
+    html.find('[data-designer-save]').on('click',async()=>{remember();const updated=config();updated.defaultLayout=this.defaults;updated.sets=updated.sets.map(set=>this.layouts?.[set.id]?{...set,layout:this.layouts[set.id]}:set);await game.settings.set(ID,'config',updated);ui.notifications.info('Planar set layouts saved.');this.close()});
   }
   async _updateObject(){}
 }

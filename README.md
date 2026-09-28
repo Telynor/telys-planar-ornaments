@@ -2,7 +2,7 @@
 
 Standalone Foundry VTT v14 / dnd5e 5.3.3 module for Planar Spheres and Link Ropes. Open from the HSR Hub's **Upgrade Planar Relics** button or the `TelysPlanar.open()` macro. GM configuration is available from the Planar interface and from `TelysPlanar.openConfig()`.
 
-The 28 canonical planar sets have 56 piece icons plus 28 set emblems. The set display projects the matching Sphere and Link Rope when equipped, and previews any selected set. GMs can drag and scale each projected piece per set in **Set Display Designer**, available from the HSR GM panel, Planar interface, or Foundry module settings. Set preview artwork uses the original 128×128 PNG assets; the starfield and rings are rendered with CSS.
+The 28 canonical planar sets have 56 piece icons plus 28 set emblems. The set display projects the matching Sphere and Link Rope when equipped, and previews any selected set. GMs can drag and scale each projected piece per set in **Set Display Designer**, available from the HSR GM panel, Planar interface, or Foundry module settings. **Apply Sphere to all sets** and **Apply Link Rope to all sets** copy the chosen piece’s X, Y and scale to every set without changing the other piece, and save that piece as the default for new custom sets. Set preview artwork uses the original 128×128 PNG assets; the starfield and rings are rendered with CSS.
 
 ## Upgrading
 

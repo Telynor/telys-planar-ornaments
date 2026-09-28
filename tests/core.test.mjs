@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generate,advance,mainValue,bonuses,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
 import {CANONICAL_SETS} from '../scripts/catalog.mjs';
-import {visualHtml,layoutFor} from '../scripts/visuals.mjs';
+import {visualHtml,layoutFor,applyLayoutToAll} from '../scripts/visuals.mjs';
 import {activeSets,dynamicStats} from '../scripts/effects.mjs';
 test('canonical main stats stay in their slot and interpolate from +0 to +15',()=>{
  const c=structuredClone(DEFAULT_CONFIG);c.main.hpPct={min:4,max:34};
@@ -76,4 +76,12 @@ test('conditional stat bonus needs a complete matching pair',()=>{
  try{assert.equal(activeSets(actor).size,0);assert.equal(dynamicStats(actor,{}).str,undefined);
   actor.items.push(piece('rope'));assert.equal(activeSets(actor).has('301'),true);assert.equal(dynamicStats(actor,{}).str,1);
  }finally{globalThis.game=previous}
+});
+test('applying one piece layout to all preserves the other and becomes the new-set default',()=>{
+ const sets=[{id:'a',layout:{sphere:{x:10,y:20,scale:1},rope:{x:35,y:40,scale:1.3}}},{id:'b',layout:{rope:{x:72,y:80,scale:2}}}];
+ const result=applyLayoutToAll(sets,'sphere',{x:44,y:55,scale:2.5});
+ assert.deepEqual(result.sets.map(s=>s.layout.sphere),[{x:44,y:55,scale:2.5},{x:44,y:55,scale:2.5}]);
+ assert.equal(result.sets[0].layout.rope.x,35);assert.equal(result.sets[1].layout.rope.x,72);
+ assert.equal(layoutFor({id:'new'},result.defaults).sphere.scale,2.5);
+ assert.equal(sets[0].layout.sphere.x,10);
 });
