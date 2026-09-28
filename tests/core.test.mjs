@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generate,advance,mainValue,bonuses,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
+import {generate,advance,mainValue,bonuses,currencyCost,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
 import {CANONICAL_SETS} from '../scripts/catalog.mjs';
 import {visualHtml,layoutFor,applyLayoutToAll} from '../scripts/visuals.mjs';
 import {activeSets,dynamicStats} from '../scripts/effects.mjs';
 import {storedRelics,equippedRelics,allItems,mergeLegacyRelics} from '../scripts/inventory.mjs';
+test('currency costs one item per configured XP with the remainder rounded up',()=>{
+ assert.equal(currencyCost(100,40),3);
+ assert.equal(currencyCost(80,40),2);
+ assert.equal(currencyCost(0,40),0);
+});
 test('canonical main stats stay in their slot and interpolate from +0 to +15',()=>{
  const c=structuredClone(DEFAULT_CONFIG);c.main.hpPct={min:4,max:34};
  const s=generate({id:'x'},'sphere',c,()=>0),r=generate({id:'x'},'rope',c,()=>0);

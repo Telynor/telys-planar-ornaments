@@ -3,7 +3,7 @@ import {CANONICAL_SETS} from "./catalog.mjs";
 import {visualHtml,layoutFor,pieceStyle,applyLayoutToAll} from "./visuals.mjs";
 import {dynamicStats,registerConditionHooks,firstAttackBonus} from './effects.mjs';
 import {storedRelics,asItem,ownerOf,equippedRelics,allItems,mergeLegacyRelics} from './inventory.mjs';
-import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,random,generate,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs} from "./core.mjs";
+import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
 const config=()=>{const saved=clone(game.settings.get(ID,"config"));const merged=foundry.utils.mergeObject(clone(DEFAULT_CONFIG),saved,{inplace:false});const customized=new Map(merged.sets.map(s=>[s.id,s]));merged.sets=[...CANONICAL_SETS.map(s=>customized.get(s.id)??clone(s)),...merged.sets.filter(s=>!CANONICAL_SETS.some(c=>c.id===s.id))];return merged};
@@ -54,6 +54,10 @@ async function processRequest({op,data,user},remote=false){
         else if(entry.equippedActorId===actor.id)entry.equippedActorId=null;
         else throw Error('This relic is equipped by a different character.');
         await game.settings.set(ID,'relics',inventory);
+      }else if(op==='delete'){
+        if(remote||!requester.isGM)throw Error('Only the GM can delete planar ornaments.');
+        inventory.splice(index,1);
+        await game.settings.set(ID,'relics',inventory);
       }else if(op==="target"){
         const target=game.actors.get(data.targetActorId);
         if(r.setId!=="317"||entry.equippedActorId!==actor.id||!target||target.type!=="character"||target.id===actor.id)throw Error("Choose a different character for Lushaka.");
@@ -66,7 +70,7 @@ async function processRequest({op,data,user},remote=false){
           if(count)lines.push([uuid,count]);return total+count*number(mat.xp);
         },0);
         if(!xp)throw Error("Choose upgrade materials.");
-        const cost=Math.ceil(xp*Math.max(0,number(cfg.creditCostPerXp)));
+        const cost=currencyCost(xp,cfg.currencyXp);
         if(cost){if(!cfg.currencyItem)throw Error("Configure a credit item first.");lines.push([cfg.currencyItem,cost])}
         const required=new Map();for(const [id,n] of lines)required.set(id,(required.get(id)??0)+n);
         for(const [id,n] of required)if(sum(actor,id)<n)throw Error(`Insufficient ${id}: need ${n}.`);
@@ -85,10 +89,10 @@ class PlanarWindow extends FormApplication{
   async _renderInner(){const a=selectActor(this.actorId),cfg=config();this.actorId=a?.id;
     const inventory=storedRelics(),list=inventory.map(asItem);
     const cards=list.map(i=>{const r=relic(i),entry=inventory.find(x=>x.id===i.id),wearer=ownerOf(entry),isWorn=wearer?.id===a?.id,set=cfg.sets.find(s=>s.id===r.setId),value=mainValue(r,cfg);
-      const materials=cfg.materials.map(m=>`<label class="tp-material">${esc(m.name||m.uuid)} (${esc(m.xp)} XP; owned ${sum(a,m.uuid)}) <input type="number" min="0" max="${sum(a,m.uuid)}" value="0" data-material="${esc(m.uuid)}"></label>`).join("");
+      const materials=cfg.materials.map(m=>`<label class="tp-material">${esc(m.name||game.items.get(m.uuid.split('.').at(-1))?.name||m.uuid)} (${esc(m.xp)} XP; owned ${sum(a,m.uuid)}) <input type="number" min="0" max="${sum(a,m.uuid)}" value="0" data-material="${esc(m.uuid)}"></label>`).join("");
       const recipient=r.setId==="317"&&isWorn?`<label>Lushaka buff recipient <select data-lushaka-target><option value="">Choose character</option>${game.actors.filter(x=>x.type==="character"&&x.id!==a.id).map(x=>htmlOption(x.id,x.name,r.targetActorId)).join("")}</select></label>`:"";
       const details=`${i.name} +${r.level} · ${LABELS[r.main]} ${value.toFixed(2)} · ${r.sub.map(s=>`${LABELS[s.key]} +${number(s.value)}`).join(', ')||'No substats yet'}`;
-      return `<article class="tp-card ${this.selectedRelicId===i.id?'tp-selected':''}" data-item="${i.id}" data-filter-set="${esc(r.setId)}" data-filter-slot="${esc(r.slot)}" data-filter-worn="${wearer?'yes':'no'}" data-filter-wearer="${esc(wearer?.id??'')}" title="${esc(details)}" tabindex="0"><div class="tp-relic-art"><img src="${esc(i.img)}" alt="${esc(i.name)}">${wearer?`<img class="tp-wearer" src="${esc(wearer.prototypeToken?.texture?.src||wearer.img)}" title="Equipped by ${esc(wearer.name)}" alt="${esc(wearer.name)}">`:''}</div><div><h3>${esc(i.name)} <small>+${r.level}</small></h3><p>${esc(LABELS[r.main])}: ${value.toFixed(2)}${r.main.endsWith("Pct")?"%":r.main==="speed"?" ft":""}</p><p>${r.sub.map(s=>`${esc(LABELS[s.key])} +${number(s.value).toFixed(2)}`).join(" · ")||"No substats yet"}</p><div class="tp-card-actions"><p>${wearer?`Equipped by ${esc(wearer.name)}`:'Unequipped'}</p><button type="button" data-op="equip" data-equipped="${!isWorn}">${isWorn?'Unequip':`Equip for ${esc(a?.name??'character')}`}</button>${recipient}${r.level<15?`<details><summary>Upgrade · ${r.xp}/${cfg.xpPerLevel} XP</summary>${materials}<p>Cost: ${cfg.creditCostPerXp} credits per XP · owned ${sum(a,cfg.currencyItem)}</p><button type="button" data-op="upgrade">Spend selected materials</button></details>`:"<p>Maximum level</p>"}</div></div></article>`
+      return `<article class="tp-card ${this.selectedRelicId===i.id?'tp-selected':''}" data-item="${i.id}" data-filter-set="${esc(r.setId)}" data-filter-slot="${esc(r.slot)}" data-filter-worn="${wearer?'yes':'no'}" data-filter-wearer="${esc(wearer?.id??'')}" title="${esc(details)}" tabindex="0"><div class="tp-relic-art"><img src="${esc(i.img)}" alt="${esc(i.name)}">${wearer?`<img class="tp-wearer" src="${esc(wearer.prototypeToken?.texture?.src||wearer.img)}" title="Equipped by ${esc(wearer.name)}" alt="${esc(wearer.name)}">`:''}</div><div><h3>${esc(i.name)} <small>+${r.level}</small></h3><p>${esc(LABELS[r.main])}: ${value.toFixed(2)}${r.main.endsWith("Pct")?"%":r.main==="speed"?" ft":""}</p><p>${r.sub.map(s=>`${esc(LABELS[s.key])} +${number(s.value).toFixed(2)}`).join(" · ")||"No substats yet"}</p><div class="tp-card-actions"><p>${wearer?`Equipped by ${esc(wearer.name)}`:'Unequipped'}</p><button type="button" data-op="equip" data-equipped="${!isWorn}">${isWorn?'Unequip':`Equip for ${esc(a?.name??'character')}`}</button>${recipient}${r.level<15?`<details><summary>Upgrade · ${r.xp}/${cfg.xpPerLevel} XP</summary>${materials}<p>Cost: 1 ${esc(game.items.get(cfg.currencyItem?.split('.').at(-1))?.name||'currency item')} per ${number(cfg.currencyXp,1)} XP · owned ${sum(a,cfg.currencyItem)}</p><button type="button" data-op="upgrade">Spend selected materials</button></details>`:"<p>Maximum level</p>"}${game.user.isGM?'<button type="button" data-op="delete" class="tp-delete-relic"><i class="fas fa-trash"></i> Delete ornament</button>':''}</div></div></article>`
     }).join("");
     const gm='';
     const activeSet=cfg.sets.find(s=>['sphere','rope'].every(slot=>inventory.some(i=>i.equippedActorId===a?.id&&i.relic.setId===s.id&&i.relic.slot===slot)));
@@ -109,6 +113,13 @@ class PlanarWindow extends FormApplication{
       if(op==="designer")return new PlanarDesigner().render(true);
       if(op==="generate")return send(op,{actorId:a?.id,setId:html.find("[data-set]").val(),slot:html.find("[data-slot]").val()});
       const card=e.currentTarget.closest("[data-item]");if(!card)return;
+      if(op==='delete'){
+        if(!game.user.isGM)return;
+        const name=card.querySelector('h3')?.textContent?.trim()??'this ornament';
+        if(!await Dialog.confirm({title:'Delete Planar Ornament',content:`<p>Delete <strong>${esc(name)}</strong> from the shared collection? This also unequips it.</p>`}))return;
+        this.selectedRelicId=null;
+        return send('delete',{actorId:a?.id,itemId:card.dataset.item});
+      }
       const data={actorId:a.id,itemId:card.dataset.item};
       if(op==="equip")data.equipped=e.currentTarget.dataset.equipped==="true";
       if(op==="upgrade")data.materials=Object.fromEntries([...card.querySelectorAll("[data-material]")].map(el=>[el.dataset.material,el.value]));
@@ -146,20 +157,30 @@ class ConfigWindow extends FormApplication{
   async _renderInner(){const c=this.draft??config(),items=game.items.contents.filter(i=>i.type==="loot").sort((a,b)=>a.name.localeCompare(b.name));
     const itemOptions=(selected)=>`<option value="">Choose item</option>${items.map(i=>htmlOption(i.uuid,i.name,selected)).join("")}`;
     const stats=STATS.map(k=>`<tr><td>${esc(LABELS[k])}</td><td>${k==="healing"?"+1 at levels 0–7":`<input data-main="${k}" data-field="min" type="number" step="any" value="${number(c.main[k]?.min)}">`}</td><td>${k==="healing"?"+2 at 8, +3 at 15":`<input data-main="${k}" data-field="max" type="number" step="any" value="${number(c.main[k]?.max)}">`}</td><td>${SUBSTATS.includes(k)?`<input data-sub="${k}" data-field="enabled" type="checkbox" ${c.sub[k]?.enabled!==false?"checked":""}><span title="90% +1, 9% +2, 1% +3; Speed uses 5/10/15 ft">90/9/1</span>`:"—"}</td><td><input data-mapping="${k}" value="${esc(c.mapping[k]??"")}" placeholder="Ability key or system path"></td><td><input data-flat="${k}" type="number" step="any" value="${number(c.flat[k],1)}"></td></tr>`).join("");
-    const mats=c.materials.map((m,index)=>`<div class="tp-row" data-mat-row="${index}"><select data-mat-item="${index}">${itemOptions(m.uuid)}</select><input type="number" min="1" data-mat-xp="${index}" value="${esc(m.xp)}"><button type="button" data-remove-mat="${index}">Remove</button></div>`).join("");
+    const dropItem=(uuid,name,attribute)=>`<div class="tp-item-drop" data-item-drop="${attribute}" tabindex="0"><i class="fas fa-hand-pointer"></i><span class="tp-drop-name">${esc(name||game.items.get(uuid?.split('.').at(-1))?.name||'Drop an item here')}</span><input type="hidden" value="${esc(uuid||'')}"></div>`;
+    const mats=c.materials.slice(0,3).map((m,index)=>`<div class="tp-row" data-mat-row="${index}">${dropItem(m.uuid,m.name,`material:${index}`)}<label>XP per item <input type="number" min="1" data-mat-xp="${index}" value="${esc(m.xp)}"></label><button type="button" data-remove-mat="${index}">Remove</button></div>`).join("");
     const sets=c.sets.map((s,index)=>`<div class="tp-set" data-set-row="${index}"><input data-set-name="${index}" value="${esc(s.name)}" placeholder="Set name"><input data-set-sphere="${index}" value="${esc(s.sphereImage??"")}" placeholder="Sphere image path"><input data-set-rope="${index}" value="${esc(s.ropeImage??"")}" placeholder="Rope image path"><button type="button" data-remove-set="${index}">Remove</button><p>Two-piece bonus builder: choose a substat and a flat amount.</p><div data-bonus-container="${index}">${(s.bonuses??[]).map((b,n)=>`<div class="tp-row" data-bonus="${index}"><select data-bonus-stat="${index}:${n}">${[...new Set([...SUBSTATS,b.stat])].filter(Boolean).map(stat=>htmlOption(stat,LABELS[stat]??stat,b.stat)).join("")}</select><input type="number" step="any" data-bonus-value="${index}:${n}" value="${number(b.value)}"><button type="button" data-remove-bonus>×</button></div>`).join("")}</div><button type="button" data-add-bonus="${index}">Add bonus</button></div>`).join("");
-    return $(`<div class="tp-window tp-config"><p>All percentage fields use percentage points. Bonuses to ability keys use the base score and round down.</p><label>Credits item <select data-currency>${itemOptions(c.currencyItem)}</select></label><label>Credits per XP <input type="number" min="0" step="any" data-cost value="${c.creditCostPerXp}"></label><label>XP per level <input type="number" min="1" data-xp-level value="${c.xpPerLevel}"></label><h3>Upgrade materials</h3><div data-mat-container>${mats}</div><button type="button" data-add-mat>Add material</button><h3>Planar sets</h3><div data-set-container>${sets}</div><button type="button" data-add-set>Add custom set</button><h3>Stats and mappings</h3><p>Mapping examples: <code>str</code> for ability, <code>system.attributes.movement.walk</code> for movement, <code>system.attributes.ac.bonus</code> for AC. Unmapped effects remain visible in the module API.</p><table><thead><tr><th>Stat</th><th>Main +0</th><th>Main +15</th><th>Sub enabled / fixed roll odds</th><th>Target</th><th>Flat multiplier</th></tr></thead><tbody>${stats}</tbody></table><label>Base crit threshold <input type="number" min="2" max="20" data-crit-base value="${c.crit.base}"></label><label>Crit rate points per expanded face <input type="number" min="0.01" step="any" data-crit-points value="${c.crit.pointsPerRange}"></label><footer><button type="button" data-save>Save configuration</button></footer></div>`)}
+    return $(`<div class="tp-window tp-config"><p>All percentage fields use percentage points. Bonuses to ability keys use the base score and round down.</p><h3>Upgrade currency</h3>${dropItem(c.currencyItem,c.currencyName,'currency')}<label>One currency item pays for <input type="number" min="1" step="1" data-currency-xp value="${Math.max(1,number(c.currencyXp,1))}"> XP (round cost up)</label><label>XP per level <input type="number" min="1" data-xp-level value="${c.xpPerLevel}"></label><h3>Upgrade materials (up to 3)</h3><div data-mat-container>${mats}</div><button type="button" data-add-mat ${c.materials.length>=3?'disabled':''}>Add material</button><h3>Planar sets</h3><div data-set-container>${sets}</div><button type="button" data-add-set>Add custom set</button><h3>Stats and mappings</h3><p>Mapping examples: <code>str</code> for ability, <code>system.attributes.movement.walk</code> for movement, <code>system.attributes.ac.bonus</code> for AC. Unmapped effects remain visible in the module API.</p><table><thead><tr><th>Stat</th><th>Main +0</th><th>Main +15</th><th>Sub enabled / fixed roll odds</th><th>Target</th><th>Flat multiplier</th></tr></thead><tbody>${stats}</tbody></table><label>Base crit threshold <input type="number" min="2" max="20" data-crit-base value="${c.crit.base}"></label><label>Crit rate points per expanded face <input type="number" min="0.01" step="any" data-crit-points value="${c.crit.pointsPerRange}"></label><footer><button type="button" data-save>Save configuration</button></footer></div>`)}
   activateListeners(html){super.activateListeners(html);
-    html.find("[data-add-mat]").on("click",()=>{this.capture(html);this.draft.materials.push({uuid:"",xp:100});this.render(false)});
+    html.find('[data-item-drop]').on('dragover',event=>{event.preventDefault();event.currentTarget.classList.add('is-dragover')}).on('dragleave',event=>event.currentTarget.classList.remove('is-dragover')).on('drop',async event=>{
+      event.preventDefault();const zone=event.currentTarget;zone.classList.remove('is-dragover');
+      let data;try{data=JSON.parse(event.originalEvent.dataTransfer.getData('text/plain')||'{}')}catch{return}
+      const uuid=data.uuid||data.data?.uuid||(data.type==='Item'&&data.id?`Item.${data.id}`:'');
+      const item=uuid?await fromUuid(uuid).catch(()=>null):null;
+      if(item?.documentName!=='Item')return ui.notifications.warn('Drop an Item from the Items sidebar or a compendium.');
+      zone.querySelector('input').value=uuid;zone.querySelector('.tp-drop-name').textContent=item.name;
+      zone.dataset.itemName=item.name;
+    });
+    html.find("[data-add-mat]").on("click",()=>{this.capture(html);if(this.draft.materials.length>=3)return;this.draft.materials.push({uuid:"",xp:100});this.render(false)});
     html.find("[data-remove-mat]").on("click",e=>{this.capture(html);this.draft.materials.splice(Number(e.currentTarget.dataset.removeMat),1);this.render(false)});
     html.find("[data-add-set]").on("click",()=>{this.capture(html);this.draft.sets.push({id:foundry.utils.randomID(),name:"New Set",bonuses:[]});this.render(false)});
     html.find("[data-remove-set]").on("click",e=>{this.capture(html);this.draft.sets.splice(Number(e.currentTarget.dataset.removeSet),1);this.render(false)});
     html.find("[data-add-bonus]").on("click",e=>{this.capture(html);this.draft.sets[Number(e.currentTarget.dataset.addBonus)].bonuses.push({stat:SUBSTATS[0],value:1});this.render(false)});
     html.find("[data-remove-bonus]").on("click",e=>{const row=e.currentTarget.closest("[data-bonus]"),idx=Number(row.dataset.bonus),n=[...row.parentElement.children].indexOf(row);this.capture(html);this.draft.sets[idx].bonuses.splice(n,1);this.render(false)});
-    html.find("[data-save]").on("click",async()=>{this.capture(html);await game.settings.set(ID,"config",this.draft);for(const a of game.actors)a.prepareData();ui.notifications.info("Planar configuration saved.");this.close()})
+    html.find("[data-save]").on("click",async()=>{this.capture(html);this.draft.materials=this.draft.materials.filter(m=>m.uuid);await game.settings.set(ID,"config",this.draft);for(const a of game.actors)a.prepareData();ui.notifications.info("Planar configuration saved.");this.close()})
   }
-  capture(h){const c=this.draft??config();c.currencyItem=h.find("[data-currency]").val();c.creditCostPerXp=Math.max(0,number(h.find("[data-cost]").val()));c.xpPerLevel=Math.max(1,Math.floor(number(h.find("[data-xp-level]").val(),100)));
-    c.materials=[...h[0].querySelectorAll("[data-mat-row]")].map(row=>({uuid:row.querySelector("[data-mat-item]").value,xp:Math.max(1,number(row.querySelector("[data-mat-xp]").value))})).filter(m=>m.uuid);
+  capture(h){const c=this.draft??config(),currency=h[0].querySelector('[data-item-drop="currency"]');c.currencyItem=currency?.querySelector('input')?.value??'';c.currencyName=currency?.dataset.itemName||currency?.querySelector('.tp-drop-name')?.textContent||'';c.currencyXp=Math.max(1,Math.floor(number(h.find('[data-currency-xp]').val(),1)));c.xpPerLevel=Math.max(1,Math.floor(number(h.find("[data-xp-level]").val(),100)));
+    c.materials=[...h[0].querySelectorAll("[data-mat-row]")].slice(0,3).map(row=>({uuid:row.querySelector('[data-item-drop] input')?.value??'',name:row.querySelector('[data-item-drop]')?.dataset.itemName||row.querySelector('.tp-drop-name')?.textContent||'',xp:Math.max(1,Math.floor(number(row.querySelector("[data-mat-xp]").value)))}));
     c.sets=[...h[0].querySelectorAll("[data-set-row]")].map(row=>{const i=Number(row.dataset.setRow);return{...c.sets[i],id:c.sets[i]?.id||foundry.utils.randomID(),name:row.querySelector("[data-set-name]").value.trim(),sphereImage:row.querySelector("[data-set-sphere]").value.trim(),ropeImage:row.querySelector("[data-set-rope]").value.trim(),bonuses:[...row.querySelectorAll("[data-bonus]")].map(b=>({stat:b.querySelector("[data-bonus-stat]").value.trim(),value:number(b.querySelector("[data-bonus-value]").value)})).filter(b=>b.stat)}}).filter(s=>s.name);
     for(const el of h[0].querySelectorAll("[data-main]")){const k=el.dataset.main;c.main[k]??={};c.main[k][el.dataset.field]=number(el.value)}
     for(const el of h[0].querySelectorAll("[data-sub]")){const k=el.dataset.sub;c.sub[k]??={};c.sub[k][el.dataset.field]=el.type==="checkbox"?el.checked:number(el.value)}
@@ -261,25 +282,45 @@ function injectHub(app,html){
   const element=html?.jquery?html[0]:html instanceof HTMLElement?html:null;
   const root=[element,app?.element?.jquery?app.element[0]:app?.element].find(x=>x instanceof HTMLElement&&x.querySelector('.tsru-phone-button-field'));
   const field=root?.querySelector('.tsru-phone-button-field');if(!field)return;
-  // Remove the old full-width control, including one inserted later by a stale hook.
-  const removeLegacy=()=>root.querySelectorAll('.tp-hub-entry,.tp-gm-designer').forEach(element=>element.remove());
+  const removeLegacy=()=>root.querySelectorAll('.tp-hub-entry,.tp-gm-designer,.tp-phone-tile').forEach(element=>element.remove());
   removeLegacy();
   if(!root._telysPlanarLegacyObserver){
     const observer=new MutationObserver(removeLegacy);
     observer.observe(root,{childList:true,subtree:true});root._telysPlanarLegacyObserver=observer;
   }
-  if(field.querySelector('.tp-phone-tile'))return;
-  const actions=[['Planar Relics','fa-circle-nodes',()=>open()]];
-  if(game.user.isGM)actions.push(['Planar Relics Config','fa-gear',()=>new ConfigWindow().render(true)],['Generate Planar Relics','fa-dice',openGenerator],['Set Display Designer','fa-object-group',()=>new PlanarDesigner().render(true)]);
-  const base=Math.max(field.scrollHeight,field.getBoundingClientRect().height,parseFloat(getComputedStyle(field).height)||0);
-  const tileHeight=Math.max(76,window.innerHeight*.12),gap=12,rows=Math.ceil(actions.length/2);
-  field.style.height=`${Math.ceil(base+rows*(tileHeight+gap)+gap)}px`;
-  actions.forEach(([label,icon,action],index)=>{
-    const button=document.createElement('button');button.type='button';button.className=`tp-phone-tile${index&&game.user.isGM?' tsru-phone-button-gm':''}`;
-    button.style.cssText=`left:${index%2?52:6}%;top:${Math.ceil(base+gap+Math.floor(index/2)*(tileHeight+gap))}px;width:42%;height:${Math.ceil(tileHeight)}px`;
-    button.innerHTML=`<i class="fas ${icon}" aria-hidden="true"></i><span>${label}</span>`;
-    button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();action()});field.append(button);
-  });
+  const actions={
+    'planar-relics':()=>open(),
+    'planar-config':()=>new ConfigWindow().render(true),
+    'planar-generate':openGenerator,
+    'planar-designer':()=>new PlanarDesigner().render(true)
+  };
+  for(const button of field.querySelectorAll('[data-hub-action^="planar-"]'))if(!game.user.isGM&&button.dataset.hubAction!=='planar-relics')button.hidden=true;
+  if(field._telysPlanarActionsInstalled)return;
+  field._telysPlanarActionsInstalled=true;
+  field.addEventListener('click',event=>{
+    const button=event.target.closest('[data-hub-action^="planar-"]');
+    if(!button||!field.contains(button))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(!game.user.isGM&&button.dataset.hubAction!=='planar-relics')return;
+    actions[button.dataset.hubAction]?.();
+  },true);
+}
+const PHONE_ACTIONS=[['planar-relics','Planar Relics (player)'],['planar-config','Planar Relics Config (GM)'],['planar-generate','Generate Planar Relics (GM)'],['planar-designer','Set Display Designer (GM)']];
+function injectHubConfig(app,html){
+  if(app.options?.id!=='tsru-hub-config')return;
+  const element=html?.jquery?html[0]:html instanceof HTMLElement?html:null;
+  const root=[element,app?.element?.jquery?app.element[0]:app?.element].find(x=>x instanceof HTMLElement&&x.querySelector('[data-hub-button-action]'));
+  for(const select of root?.querySelectorAll('[data-hub-button-action]')??[]){
+    for(const [value,label] of PHONE_ACTIONS)if(!select.querySelector(`option[value="${value}"]`))select.add(new Option(label,value));
+    const index=Number(select.name.match(/^buttons\.(\d+)\.action$/)?.[1]);
+    const selected=app.buttonsDraft?.[index]?.action;
+    if(selected?.startsWith('planar-'))select.value=selected;
+    const row=select.closest('[data-hub-button-editor]');
+    row?.classList.toggle('is-gm-only',selected?.startsWith('planar-')&&selected!=='planar-relics');
+    if(!select._telysPlanarConfigured){select._telysPlanarConfigured=true;select.addEventListener('change',()=>{
+      queueMicrotask(()=>row?.classList.toggle('is-gm-only',select.value.startsWith('planar-')&&select.value!=='planar-relics'));
+    })}
+  }
 }
 function injectPlanarSheetTab(app,root,actor){
   if(root.querySelector('.tp-sheet-tab')||!editable(actor))return;
@@ -291,8 +332,8 @@ function injectPlanarSheetTab(app,root,actor){
     button.addEventListener('click',event=>{event.preventDefault();open(actor.id)});header.append(button);return;
   }
   const group=nav.dataset.group||nav.querySelector('[data-group]')?.dataset.group||'primary';
-  const tab=document.createElement('a');tab.className='item control tp-sheet-tab';tab.dataset.action='tab';tab.dataset.tab='telys-planar';tab.dataset.group=group;tab.setAttribute('role','tab');tab.innerHTML='<i class="fas fa-circle-nodes"></i> Planar Relics';
-  const panel=document.createElement('section');panel.className='tab tp-sheet-panel';panel.dataset.tab='telys-planar';panel.dataset.group=group;panel.style.display='none';
+  const tab=document.createElement('a');tab.className='item control tp-sheet-tab';tab.dataset.action='tab';tab.dataset.tab='telys-planar';tab.dataset.group=group;tab.setAttribute('role','tab');tab.setAttribute('aria-label','Planar Relics');tab.title='Planar Relics';tab.innerHTML='<i class="fas fa-circle-nodes" aria-hidden="true"></i>';
+  const panel=document.createElement('section');panel.className='tab tp-sheet-panel';panel.dataset.tab='telys-planar';panel.dataset.group=group;panel.hidden=true;
   const cfg=config(),pieces=storedRelics().map(asItem),equipped=equippedRelics(actor);
   const selected=cfg.sets.find(s=>equipped.some(i=>relic(i)?.setId===s.id))??cfg.sets[0];
   const slots=['sphere','rope'].map(slot=>{
@@ -309,9 +350,10 @@ function injectPlanarSheetTab(app,root,actor){
   }));
   const otherTabs=[...nav.querySelectorAll('[data-tab]')];
   const otherPanels=[...body.querySelectorAll(`.tab[data-group="${group}"]`)].filter(el=>el!==panel);
-  const activate=()=>{otherTabs.forEach(el=>el.classList.remove('active'));otherPanels.forEach(el=>el.classList.remove('active'));tab.classList.add('active');panel.classList.add('active');panel.style.display='block'};
+  const deactivate=()=>{planarSheetOpen.set(app,false);tab.classList.remove('active');panel.classList.remove('active');panel.hidden=true};
+  const activate=()=>{otherTabs.forEach(el=>el.classList.remove('active'));otherPanels.forEach(el=>el.classList.remove('active'));tab.classList.add('active');panel.classList.add('active');panel.hidden=false};
   tab.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();planarSheetOpen.set(app,true);activate()});
-  nav.addEventListener('click',event=>{if(event.target.closest('.tp-sheet-tab'))return;planarSheetOpen.set(app,false);tab.classList.remove('active');panel.classList.remove('active');panel.style.display='none'},true);
+  root.addEventListener('click',event=>{const target=event.target.closest('[data-tab], [data-action="tab"]');if(target&&!target.closest('.tp-sheet-tab'))deactivate()},true);
   nav.append(tab);body.append(panel);if(planarSheetOpen.get(app))activate();
 }
 function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.documentName!=='Actor'||actor.type!=="character")return;
@@ -368,8 +410,8 @@ Hooks.once("ready",async()=>{
     opts.criticalSuccess=criticalThreshold(opts.criticalSuccess??rollConfig.subject.criticalThreshold??20,count);
   });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
   window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,app:null};
-  Hooks.on("renderApplication",injectHub);
-  Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectSheet(app,html);requestAnimationFrame(()=>{injectHub(app,app.element);injectSheet(app,app.element)})});
+  Hooks.on("renderApplication",(app,html)=>{injectHub(app,html);injectHubConfig(app,html)});
+  Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectHubConfig(app,html);injectSheet(app,html);requestAnimationFrame(()=>{injectHub(app,app.element);injectHubConfig(app,app.element);injectSheet(app,app.element)})});
   Hooks.on("renderActorSheet",injectSheet);
   Hooks.on('renderCharacterActorSheet',injectSheet);
   Hooks.on('renderActorSheetV2',injectSheet);

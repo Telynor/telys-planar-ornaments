@@ -6,7 +6,7 @@ export const ROPE = ["hpPct", "atkPct", "defPct", "breakEffect", "energyRegen", 
 export const SUBSTATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageDice", "str", "dex", "con", "int", "wis", "cha", "speed", "breakEffect", "effectHit"];
 export const LABELS = {savingThrow:"Saving throw bonus",initiativeBonus:"Initiative bonus",critRange:"Crit range",critDamageDice:"Critical damage dice",str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma",hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP %",atkPct:"ATK %",defPct:"DEF %",speed:"Speed (ft)",speedPct:"Movement Speed %",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate",effectRes:"Effect RES %",breakEffect:"Break Effect",energyRegen:"Energy Regeneration",healing:"Outgoing Healing %",damagePct:"Damage %",physical:"Physical Damage",fire:"Fire Damage",ice:"Ice Damage",wind:"Wind Damage",lightning:"Lightning Damage",quantum:"Quantum Damage",imaginary:"Imaginary Damage",elation:"Elation Damage"};
 export const DEFAULT_CONFIG = {
-  sets:[],currencyItem:"",creditCostPerXp:1,xpPerLevel:100,
+  sets:[],currencyItem:"",currencyXp:1,xpPerLevel:100,
   defaultLayout:{sphere:{x:51,y:58,scale:1.5},rope:{x:50,y:45,scale:1.9}},
   materials:[], // {uuid,xp}: owned inventory items and XP per copy
   main:{}, // {stat:{min,max}} values in points or percentage points
@@ -16,6 +16,7 @@ export const DEFAULT_CONFIG = {
   crit:{base:20,pointsPerRange:1}
 };
 export const number = (v,fallback=0)=>Number.isFinite(Number(v))?Number(v):fallback;
+export const currencyCost=(xp,currencyXp)=>Math.ceil(Math.max(0,number(xp))/Math.max(1,Math.floor(number(currencyXp,1))));
 export const random = (array,rng=Math.random)=>array[Math.floor(rng()*array.length)];
 export function generate(set,slot,config,rng=Math.random){
   if(!set || !["sphere","rope"].includes(slot))throw Error("Choose a set and a slot.");
