@@ -23,6 +23,21 @@ export function generate(set,slot,config,rng=Math.random){
   const stat=random(slot==="sphere"?SPHERE:ROPE,rng);
   return {setId:set.id,slot,level:0,xp:0,main:stat,sub:[],equipped:false};
 }
+export function generateCustom(set,slot,main,level,substats=[]){
+  if(!set||!['sphere','rope'].includes(slot))throw Error('Choose a set and a piece.');
+  if(!(slot==='sphere'?SPHERE:ROPE).includes(main))throw Error('Choose a valid main stat for that piece.');
+  const n=Number(level);
+  if(!Number.isInteger(n)||n<0||n>15)throw Error('Level must be between 0 and 15.');
+  if(!Array.isArray(substats)||substats.length>Math.min(n,4))throw Error('Too many substats for this level.');
+  const seen=new Set();
+  const sub=substats.map(({key,value})=>{
+    const v=Number(value);
+    if(!SUBSTATS.includes(key)||key===main||seen.has(key))throw Error('Choose distinct valid substats.');
+    if(!(key==='speed'?[5,10,15]:[1,2,3]).includes(v))throw Error('Choose a valid substat bonus.');
+    seen.add(key);return {key,value:v,rolls:1};
+  });
+  return {setId:set.id,slot,level:n,xp:0,main,sub,equipped:false};
+}
 export function mainValue(relic,config){
   if(relic.main==="healing")return relic.level>=15?3:relic.level>=8?2:1;
   const bounds=config.main?.[relic.main]??{};

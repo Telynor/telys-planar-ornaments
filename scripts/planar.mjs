@@ -3,7 +3,7 @@ import {CANONICAL_SETS} from "./catalog.mjs";
 import {visualHtml,layoutFor,pieceStyle,applyLayoutToAll} from "./visuals.mjs";
 import {dynamicStats,registerConditionHooks,firstAttackBonus} from './effects.mjs';
 import {storedRelics,asItem,ownerOf,equippedRelics,allItems,mergeLegacyRelics} from './inventory.mjs';
-import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs} from "./core.mjs";
+import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,generateCustom,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
 const config=()=>{const saved=clone(game.settings.get(ID,"config"));const merged=foundry.utils.mergeObject(clone(DEFAULT_CONFIG),saved,{inplace:false});const customized=new Map(merged.sets.map(s=>[s.id,s]));merged.sets=[...CANONICAL_SETS.map(s=>customized.get(s.id)??clone(s)),...merged.sets.filter(s=>!CANONICAL_SETS.some(c=>c.id===s.id))];return merged};
@@ -34,15 +34,15 @@ async function processRequest({op,data,user},remote=false){
   if(!game.user.isGM)return;
   const requester=game.users.get(user);if(!requester)return;
   const actor=game.actors.get(data.actorId);
-  if(op!=='generate'&&(!actor||(!requester.isGM&&!actor.testUserPermission(requester,"OWNER"))))return;
+  if(!['generate','generateCustom'].includes(op)&&(!actor||(!requester.isGM&&!actor.testUserPermission(requester,"OWNER"))))return;
   const key='shared-collection';if(pending.has(key))return ui.notifications.warn("Planar transaction already in progress.");
   pending.add(key);
   try{
     const cfg=config();
-    if(op==="generate"){
+    if(op==="generate"||op==='generateCustom'){
       if(remote||!requester.isGM)throw Error("Only a local GM can generate relics.");
       const set=cfg.sets.find(s=>s.id===data.setId);if(!set)throw Error("Unknown set.");
-      const r=generate(set,data.slot,cfg);
+      const r=op==='generateCustom'?generateCustom(set,data.slot,data.main,data.level,data.substats):generate(set,data.slot,cfg);
       const name=r.slot==='sphere'?(set.sphereName||`${set.name} Planar Sphere`):(set.ropeName||`${set.name} Link Rope`);
       const img=r.slot==='sphere'?(set.sphereImage||'icons/magic/earth/orb-stone-smoke-teal.webp'):(set.ropeImage||'icons/commodities/cloth/cord-rope-gold.webp');
       await game.settings.set(ID,'relics',[...storedRelics(),{id:foundry.utils.randomID(),name,img,relic:r,equippedActorId:null}]);
@@ -268,8 +268,15 @@ function openGenerator(){
   if(!game.user.isGM)return;
   const sets=config().sets;
   if(!sets.length)return ui.notifications.warn('A planar set is required.');
-  const content=`<form class="tp-generate-form"><label>Planar set <select name="setId">${sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select name="slot"><option value="random">Random Sphere or Link Rope</option><option value="sphere">Sphere</option><option value="rope">Link Rope</option></select></label></form>`;
-  return new Dialog({title:'Generate Planar Relic',content,buttons:{generate:{icon:'<i class="fas fa-dice"></i>',label:'Generate',callback:html=>{const form=html[0].querySelector('.tp-generate-form');if(!form)return;const data=Object.fromEntries(new FormData(form));if(data.slot==='random')data.slot=Math.random()<0.5?'sphere':'rope';void send('generate',data)}}},default:'generate'}).render(true);
+  const mainChoices=[...new Set([...SPHERE,...ROPE])].map(key=>`<label class="tp-main-choice" data-main-slot="${SPHERE.includes(key)?'sphere ':''}${ROPE.includes(key)?'rope':''}"><input type="checkbox" name="main" value="${key}"> ${esc(LABELS[key])}</label>`).join('');
+  const subRows=Array.from({length:4},(_,index)=>`<label class="tp-sub-row" data-sub-row="${index}">Substat ${index+1} <select name="sub-${index}"><option value="">None</option>${SUBSTATS.map(key=>htmlOption(key,LABELS[key])).join('')}</select> <select name="bonus-${index}"><option value="1">+1</option><option value="2">+2</option><option value="3">+3</option></select></label>`).join('');
+  const content=`<form class="tp-generate-form"><label>Planar set <select name="setId">${sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select name="slot"><option value="sphere">Planar Sphere</option><option value="rope">Link Rope</option></select></label><fieldset><legend>Main stat (choose one)</legend><div class="tp-main-choices">${mainChoices}</div></fieldset><label>Level <input type="number" name="level" min="0" max="15" step="1" value="0"></label><fieldset><legend>Substats (one available per level, up to four)</legend>${subRows}</fieldset><p>Speed bonuses use 5, 10, or 15 ft. Unselected substats remain empty.</p></form>`;
+  const read=html=>{const form=html[0].querySelector('.tp-generate-form');if(!form)return null;const level=Number(form.elements.level.value);const substats=[...form.querySelectorAll('[data-sub-row]')].filter(row=>!row.hidden&&row.querySelector('[name^="sub-"]').value).map(row=>{const key=row.querySelector('[name^="sub-"]').value,tier=Number(row.querySelector('[name^="bonus-"]').value);return {key,value:key==='speed'?tier*5:tier}});return {setId:form.elements.setId.value,slot:form.elements.slot.value,main:form.querySelector('input[name="main"]:checked')?.value,level,substats}};
+  return new Dialog({title:'Generate Planar Relic',content,buttons:{generate:{icon:'<i class="fas fa-hammer"></i>',label:'Generate Custom Relic',callback:html=>{const data=read(html);if(data)void send('generateCustom',data)}},random:{icon:'<i class="fas fa-dice"></i>',label:'Generate Random',callback:html=>{const data=read(html);if(data)void send('generate',{setId:data.setId,slot:data.slot})}}},default:'generate',render:html=>{
+    const form=html[0].querySelector('.tp-generate-form');if(!form)return;
+    const refresh=()=>{const slot=form.elements.slot.value,level=Math.max(0,Math.min(15,Number(form.elements.level.value)||0));for(const choice of form.querySelectorAll('[data-main-slot]')){choice.hidden=!choice.dataset.mainSlot.split(' ').includes(slot);if(choice.hidden)choice.querySelector('input').checked=false}for(const row of form.querySelectorAll('[data-sub-row]')){row.hidden=Number(row.dataset.subRow)>=Math.min(level,4);for(const input of row.querySelectorAll('select'))input.disabled=row.hidden;if(row.hidden)row.querySelector('[name^="sub-"]').value=''}};
+    form.addEventListener('change',event=>{if(event.target.matches('input[name="main"]')&&event.target.checked)for(const checkbox of form.querySelectorAll('input[name="main"]'))if(checkbox!==event.target)checkbox.checked=false;if(event.target.matches('[name="slot"], [name="level"]'))refresh()});form.elements.level.addEventListener('input',refresh);refresh();
+  }}).render(true);
 }
 function sheetRoot(app,html){
   const element=html?.jquery?html[0]:html instanceof HTMLElement?html:null;

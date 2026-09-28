@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generate,advance,mainValue,bonuses,currencyCost,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
+import {generate,generateCustom,advance,mainValue,bonuses,currencyCost,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
+test('custom generator preserves selected stats and enforces slot and level limits',()=>{
+ const set={id:'301'};
+ assert.deepEqual(generateCustom(set,'sphere','fire',2,[{key:'speed',value:10},{key:'critRange',value:2}]),{setId:'301',slot:'sphere',level:2,xp:0,main:'fire',sub:[{key:'speed',value:10,rolls:1},{key:'critRange',value:2,rolls:1}],equipped:false});
+ assert.throws(()=>generateCustom(set,'rope','fire',0,[]),/main stat/);
+ assert.throws(()=>generateCustom(set,'sphere','fire',0,[{key:'speed',value:5}]),/Too many/);
+ assert.throws(()=>generateCustom(set,'sphere','fire',2,[{key:'speed',value:5},{key:'speed',value:10}]),/distinct/);
+ assert.throws(()=>generateCustom(set,'sphere','fire',16,[]),/Level/);
+});
 import {CANONICAL_SETS} from '../scripts/catalog.mjs';
 import {visualHtml,layoutFor,applyLayoutToAll} from '../scripts/visuals.mjs';
 import {activeSets,dynamicStats} from '../scripts/effects.mjs';
