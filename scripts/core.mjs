@@ -1,16 +1,16 @@
 export const ID = "telys-planar-ornaments";
 export const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
-export const STATS = ["hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect", "energyRegen", "healing", "damagePct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
+export const STATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageDice", "str", "dex", "con", "int", "wis", "cha", "hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "speedPct", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect", "energyRegen", "healing", "damagePct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary", "elation"];
 export const SPHERE = ["hpPct", "atkPct", "defPct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
-export const ROPE = ["hpPct", "atkPct", "defPct", "breakEffect", "energyRegen"];
-export const SUBSTATS = ["hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect"];
-export const LABELS = {hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP %",atkPct:"ATK %",defPct:"DEF %",speed:"Speed",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate %",effectRes:"Effect RES %",breakEffect:"Break Effect %",energyRegen:"Energy Regeneration %",healing:"Outgoing Healing %",damagePct:"Damage %",physical:"Physical Damage %",fire:"Fire Damage %",ice:"Ice Damage %",wind:"Wind Damage %",lightning:"Lightning Damage %",quantum:"Quantum Damage %",imaginary:"Imaginary Damage %"};
+export const ROPE = ["hpPct", "atkPct", "defPct", "breakEffect", "energyRegen", "healing"];
+export const SUBSTATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageDice", "str", "dex", "con", "int", "wis", "cha", "speed", "breakEffect", "effectHit"];
+export const LABELS = {savingThrow:"Saving throw bonus",initiativeBonus:"Initiative bonus",critRange:"Crit range",critDamageDice:"Critical damage dice",str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma",hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP %",atkPct:"ATK %",defPct:"DEF %",speed:"Speed (ft)",speedPct:"Movement Speed %",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate",effectRes:"Effect RES %",breakEffect:"Break Effect",energyRegen:"Energy Regeneration",healing:"Outgoing Healing %",damagePct:"Damage %",physical:"Physical Damage",fire:"Fire Damage",ice:"Ice Damage",wind:"Wind Damage",lightning:"Lightning Damage",quantum:"Quantum Damage",imaginary:"Imaginary Damage",elation:"Elation Damage"};
 export const DEFAULT_CONFIG = {
   sets:[],currencyItem:"",creditCostPerXp:1,xpPerLevel:100,
   materials:[], // {uuid,xp}: owned inventory items and XP per copy
   main:{}, // {stat:{min,max}} values in points or percentage points
   sub:Object.fromEntries(SUBSTATS.map(key=>[key,{min:1,max:3,enabled:true}])),
-  mapping:{hpPct:"con",atkPct:"str",defPct:"dex",hpFlat:"system.attributes.hp.bonuses.overall",atkFlat:"system.bonuses.mwak.attack",defFlat:"system.attributes.ac.bonus",speed:"system.attributes.movement.walk",critRate:"",critDamage:"",effectHit:"",effectRes:"",breakEffect:"",energyRegen:"",healing:"",physical:"",fire:"",ice:"",wind:"",lightning:"",quantum:"",imaginary:""},
+  mapping:{hpPct:"con",atkPct:"str",defPct:"dex",hpFlat:"system.attributes.hp.bonuses.overall",atkFlat:"system.bonuses.mwak.attack",defFlat:"system.attributes.ac.bonus",speed:"system.attributes.movement.walk",speedPct:"system.attributes.movement.walk",critRate:"",critDamage:"",effectHit:"",effectRes:"",breakEffect:"",energyRegen:"",healing:"",physical:"",fire:"",ice:"",wind:"",lightning:"",quantum:"",imaginary:"",elation:"",damagePct:""},
   flat:{hpFlat:1,atkFlat:1,defFlat:1,speed:1},
   crit:{base:20,pointsPerRange:1}
 };
@@ -22,6 +22,7 @@ export function generate(set,slot,config,rng=Math.random){
   return {setId:set.id,slot,level:0,xp:0,main:stat,sub:[],equipped:false};
 }
 export function mainValue(relic,config){
+  if(relic.main==="healing")return relic.level>=15?3:relic.level>=8?2:1;
   const bounds=config.main?.[relic.main]??{};
   const min=number(bounds.min),max=number(bounds.max,min);
   return min+(max-min)*Math.min(15,Math.max(0,number(relic.level)))/15;
@@ -29,18 +30,21 @@ export function mainValue(relic,config){
 export function nextSub(relic,config,rng=Math.random){
   const available=SUBSTATS.filter(k=>k!==relic.main&&config.sub?.[k]?.enabled!==false&&!relic.sub.some(s=>s.key===k));
   if(relic.sub.length<4&&available.length){
-    const key=random(available,rng),bounds=config.sub?.[key]??{};
-    relic.sub.push({key,value:roll(bounds,rng),rolls:1});
+    const key=random(available,rng);
+    relic.sub.push({key,value:rollSubstat(key,rng),rolls:1});
   }else if(relic.sub.length){
-    const existing=random(relic.sub,rng);existing.value+=roll(config.sub?.[existing.key]??{},rng);existing.rolls++;
+    const existing=random(relic.sub,rng);existing.value+=rollSubstat(existing.key,rng);existing.rolls++;
   }
 }
-function roll(bounds,rng){const min=number(bounds.min,1),max=Math.max(min,number(bounds.max,min));return min+(max-min)*rng()}
+export function rollSubstat(key,rng=Math.random){
+  const value=rng(),tier=value<0.90?1:value<0.99?2:3;
+  return key==="speed"?tier*5:tier;
+}
 export function advance(relic,xp,config,rng=Math.random){
   relic={...relic,sub:relic.sub.map(s=>({...s}))};
   const step=Math.max(1,Math.floor(number(config.xpPerLevel,100)));
   relic.xp=Math.max(0,number(relic.xp))+Math.max(0,Math.floor(number(xp)));
-  while(relic.level<15&&relic.xp>=step){relic.level++;relic.xp-=step;if(relic.level%3===0)nextSub(relic,config,rng)}
+  while(relic.level<15&&relic.xp>=step){relic.level++;relic.xp-=step;nextSub(relic,config,rng)}
   if(relic.level===15)relic.xp=0;
   return relic;
 }
@@ -69,7 +73,21 @@ export function arcadiaRate(allies){
 }
 export function criticalThreshold(baseThreshold, bonusPoints, rng=Math.random){
   const base=Math.max(2,Math.min(20,Math.floor(number(baseThreshold,20))));
-  const faces=Math.max(0,number(bonusPoints))/5;
-  const full=Math.floor(faces),fraction=Math.round((faces-full)*1e10)/1e10;
-  return Math.max(2,base-full-(rng()<fraction?1:0));
+  return Math.max(2,base-Math.max(0,Math.floor(number(bonusPoints))));
 }
+export function critBonusSources(items,config){
+  const equipped=items.map(item=>item.flags?.[ID]?.relic).filter(r=>r?.equipped);
+  let count=0;
+  for(const relic of equipped){
+    if(relic.main==="critRate"&&mainValue(relic,config)>0)count++;
+    count+=relic.sub.filter(sub=>["critRate","critRange"].includes(sub.key)&&number(sub.value)>0).reduce((n,sub)=>n+(sub.key==="critRange"?Math.floor(number(sub.value)):1),0);
+  }
+  for(const set of config.sets??[]){
+    const pieces=equipped.filter(r=>r.setId===set.id);
+    if(pieces.some(r=>r.slot==="sphere")&&pieces.some(r=>r.slot==="rope"))
+      count+=(set.bonuses??[]).filter(b=>["critRate","critRange"].includes(b.stat)&&number(b.value)>0).reduce((n,b)=>n+(b.stat==="critRange"?Math.floor(number(b.value)):1),0);
+  }
+  return count;
+}
+export const ELEMENT_DAMAGE_TYPES={physical:["bludgeoning","piercing","slashing"],fire:["fire"],ice:["cold"],wind:["thunder"],lightning:["lightning"],quantum:["force"],imaginary:["psychic"],elation:["psychic"]};
+export function elementalDamageBonus(relic){return relic.level>=15?3:relic.level>=8?2:1}
