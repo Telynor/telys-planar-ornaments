@@ -1,7 +1,8 @@
 import {ID,number} from './core.mjs';
+import {equippedRelics} from './inventory.mjs';
 const relic=item=>item.getFlag?.(ID,'relic')??item.flags?.[ID]?.relic;
 export function activeSets(actor){
- const pieces=new Map();for(const item of actor?.items??[]){const r=relic(item);if(!r?.equipped)continue;let slots=pieces.get(r.setId);if(!slots){slots=new Map();pieces.set(r.setId,slots)}slots.set(r.slot,r)}
+ const pieces=new Map();for(const item of equippedRelics(actor)){const r=relic(item);if(!r?.equipped)continue;let slots=pieces.get(r.setId);if(!slots){slots=new Map();pieces.set(r.setId,slots)}slots.set(r.slot,r)}
  return new Set([...pieces].filter(([,slots])=>slots.has('sphere')&&slots.has('rope')).map(([id])=>id));
 }
 export function hsr(actor){return game.modules.get('telys-star-rail-ultimates')?.api?.getConfig?.(actor)??actor.getFlag?.('telys-star-rail-ultimates','ultimate')??{}}
@@ -35,7 +36,7 @@ export function dynamicStats(actor,config){
  let lushaka=false,amphoreus=false;
  for(const wearer of game.actors??[]){if(wearer.type!=='character'||wearer.id===actor.id)continue;const wsets=activeSets(wearer);
   if(wsets.has('302')&&number(wearer.system?.attributes?.movement?.walk)>=35)add('str',1);
-  if(wsets.has('317')&&!lushaka&&wearer.items.some(i=>relic(i)?.setId==='317'&&relic(i)?.targetActorId===actor.id)){add('str',1);lushaka=true}
+  if(wsets.has('317')&&!lushaka&&equippedRelics(wearer).some(i=>relic(i)?.setId==='317'&&relic(i)?.targetActorId===actor.id)){add('str',1);lushaka=true}
   if(wsets.has('323')&&summoned(wearer)&&!amphoreus){add('speed',5);amphoreus=true}
   if(wsets.has('310')&&number(wearer._planarBonuses?.savingThrow)>=2&&!result.keelDice){add('critDamageDice',1);result.keelDice=true}
  }

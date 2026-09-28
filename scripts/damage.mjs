@@ -1,5 +1,6 @@
 import {ID,number,damageBreakdown,ELEMENT_DAMAGE_TYPES,elementalDamageBonus,bonuses} from './core.mjs';
 import {dynamicStats,conditionalDamage,summonerFor,activeSets} from './effects.mjs';
+import {allItems,equippedRelics} from './inventory.mjs';
 const processed=new WeakSet();
 const relic=item=>item.getFlag?.(ID,'relic');
 const escape=s=>foundry.utils.escapeHTML(String(s??''));
@@ -12,7 +13,7 @@ function alliesInCombat(actor){
 }
 export function activeDamageEffects(actor,config){
   const slots=new Map();
-  for(const item of actor.items){const r=relic(item);if(!r?.equipped)continue;
+  for(const item of equippedRelics(actor)){const r=relic(item);if(!r?.equipped)continue;
     const entry=slots.get(r.setId)??new Set();entry.add(r.slot);slots.set(r.setId,entry)}
   const effects=[];
   for(const set of config.sets){const pair=slots.get(set.id);if(!pair?.has('sphere')||!pair.has('rope'))continue;
@@ -30,7 +31,7 @@ export function registerDamageHooks(getConfig){
     const roll=workflow.damageRoll;if(!roll||!Number.isFinite(roll.total)||roll.total<=0)return;
     if(roll.options?.type==='healing'){
       const owner=summonerFor(workflow.actor),ownerHealing=owner&&activeSets(owner).has('320')?(number(owner.system?.attributes?.movement?.walk)>=55?2:number(owner.system?.attributes?.movement?.walk)>=40?1:0):0;
-      const amount=Math.max(0,Math.floor(number(bonuses(workflow.actor.items,getConfig()).healing)+number(dynamicStats(workflow.actor,getConfig()).healing)+ownerHealing));
+      const amount=Math.max(0,Math.floor(number(bonuses(allItems(workflow.actor),getConfig()).healing)+number(dynamicStats(workflow.actor,getConfig()).healing)+ownerHealing));
       if(!amount)return;
       processed.add(workflow);
       try{
@@ -44,7 +45,7 @@ export function registerDamageHooks(getConfig){
     if(roll.options?.type==='temphp')return;
     const cfg=getConfig(),effects=activeDamageEffects(workflow.actor,cfg);
     const typed=[];
-    for(const item of workflow.actor.items){const r=relic(item);if(!r?.equipped||r.slot!=='sphere'||!ELEMENT_DAMAGE_TYPES[r.main])continue;
+    for(const item of equippedRelics(workflow.actor)){const r=relic(item);if(!r?.equipped||r.slot!=='sphere'||!ELEMENT_DAMAGE_TYPES[r.main])continue;
       const types=ELEMENT_DAMAGE_TYPES[r.main];
       const terms=roll.terms?.filter(t=>t?.options?.damageType&&types.includes(t.options.damageType));
       if(terms?.length||types.includes(roll.options?.type))typed.push({label:`${item.name} (${r.main})`,amount:elementalDamageBonus(r),type:types.includes(roll.options?.type)?roll.options.type:terms[0].options.damageType});
@@ -52,7 +53,7 @@ export function registerDamageHooks(getConfig){
     typed.push(...conditionalDamage(workflow.actor,workflow));
     const owner=summonerFor(workflow.actor);if(owner&&activeSets(owner).has('321'))typed.push(...conditionalDamage(owner,workflow).filter(e=>e.label==='Arcadia'));
     const ownerDice=owner&&activeSets(owner).has('319')&&number(owner.system?.attributes?.hp?.max)>=60?1:0;
-    const critDice=Math.max(0,Math.floor(number(bonuses(workflow.actor.items,cfg).critDamageDice)+number(dynamicStats(workflow.actor,cfg).critDamageDice)+ownerDice));
+    const critDice=Math.max(0,Math.floor(number(bonuses(allItems(workflow.actor),cfg).critDamageDice)+number(dynamicStats(workflow.actor,cfg).critDamageDice)+ownerDice));
     const isCrit=Boolean(workflow.isCritical||workflow.attackRoll?.isCritical);
     const die=roll.terms?.find(t=>Number.isInteger(t.faces)&&t.faces>=2)?.faces;
     if(!effects.length&&!typed.length&&!(isCrit&&critDice&&die))return;

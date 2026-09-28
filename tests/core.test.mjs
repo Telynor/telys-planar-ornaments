@@ -4,6 +4,7 @@ import {generate,advance,mainValue,bonuses,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,I
 import {CANONICAL_SETS} from '../scripts/catalog.mjs';
 import {visualHtml,layoutFor,applyLayoutToAll} from '../scripts/visuals.mjs';
 import {activeSets,dynamicStats} from '../scripts/effects.mjs';
+import {storedRelics,equippedRelics,allItems,mergeLegacyRelics} from '../scripts/inventory.mjs';
 test('canonical main stats stay in their slot and interpolate from +0 to +15',()=>{
  const c=structuredClone(DEFAULT_CONFIG);c.main.hpPct={min:4,max:34};
  const s=generate({id:'x'},'sphere',c,()=>0),r=generate({id:'x'},'rope',c,()=>0);
@@ -93,4 +94,22 @@ test('player projection shows only equipped slots and has no baked set art',()=>
  assert.match(one,/rope.png/);assert.doesNotMatch(one,/sphere.png/);
  const designer=visualHtml(set,x=>x,{designer:true});
  assert.match(designer,/sphere.png/);assert.match(designer,/rope.png/);
+});
+test('shared collection contributes relics only to their equipped character',()=>{
+ const previous=globalThis.game;
+ const collection=[{id:'sphere',name:'Sphere',relic:{setId:'301',slot:'sphere'},equippedActorId:'one'},{id:'rope',name:'Rope',relic:{setId:'301',slot:'rope'},equippedActorId:'one'},{id:'free',name:'Free',relic:{setId:'302',slot:'rope'},equippedActorId:null}];
+ globalThis.game={settings:{get:()=>collection},actors:[],combat:null};
+ try{
+  const one={id:'one',items:[]},two={id:'two',items:[]};
+  assert.equal(storedRelics().length,3);assert.equal(equippedRelics(one).length,2);
+  assert.equal(allItems(two).length,0);assert.equal(activeSets(one).has('301'),true);
+  assert.equal(activeSets(two).size,0);
+ }finally{globalThis.game=previous}
+});
+test('migration preserves each wearer and does not duplicate relics on retry',()=>{
+ const source=[{actorId:'pc1',itemId:'old1',name:'Sphere',img:'sphere.png',relic:{setId:'301',slot:'sphere',equipped:true,level:4}},{actorId:'pc2',itemId:'old2',name:'Rope',img:'rope.png',relic:{setId:'301',slot:'rope',equipped:false,level:2}}];
+ let count=0;const once=mergeLegacyRelics([],source,()=>`relic${++count}`);
+ assert.deepEqual(once.map(x=>x.equippedActorId),['pc1',null]);
+ const twice=mergeLegacyRelics(once,source,()=>`relic${++count}`);
+ assert.deepEqual(twice,once);assert.equal(count,2);
 });
