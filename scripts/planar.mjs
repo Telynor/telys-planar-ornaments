@@ -251,13 +251,26 @@ function openGenerator(){
 }
 function injectHub(app,html){
   if(app.id!=="tsru-hub")return;
-  const root=html[0]??html,container=root?.querySelector('.tsru-phone-scroll');if(!container||!game.user.isGM||container.querySelector('.tp-phone-tiles'))return;
-  const tiles=document.createElement('div');tiles.className='tp-phone-tiles';
-  for(const [label,icon,action] of [['Upgrade Planar Relics','fa-circle-nodes',()=>open()],['Planar Relics Config','fa-gear',()=>new ConfigWindow().render(true)],['Generate Planar Relics','fa-dice',openGenerator],['Set Display Designer','fa-object-group',()=>new PlanarDesigner().render(true)]]){
-    const button=document.createElement('button');button.type='button';button.className='tp-phone-tile';button.innerHTML=`<i class="fas ${icon}" aria-hidden="true"></i><span>${label}</span>`;
-    button.addEventListener('click',event=>{event.stopPropagation();action()});tiles.append(button);
+  const root=html[0]??html,field=root?.querySelector('.tsru-phone-button-field');if(!field)return;
+  // Remove the old full-width control, including one inserted later by a stale hook.
+  const removeLegacy=()=>root.querySelectorAll('.tp-hub-entry,.tp-gm-designer').forEach(element=>element.remove());
+  removeLegacy();
+  if(!root._telysPlanarLegacyObserver){
+    const observer=new MutationObserver(removeLegacy);
+    observer.observe(root,{childList:true,subtree:true});root._telysPlanarLegacyObserver=observer;
   }
-  container.append(tiles);
+  if(field.querySelector('.tp-phone-tile'))return;
+  const actions=[['Planar Relics','fa-circle-nodes',()=>open()]];
+  if(game.user.isGM)actions.push(['Planar Relics Config','fa-gear',()=>new ConfigWindow().render(true)],['Generate Planar Relics','fa-dice',openGenerator],['Set Display Designer','fa-object-group',()=>new PlanarDesigner().render(true)]);
+  const base=Math.max(field.scrollHeight,field.getBoundingClientRect().height,parseFloat(getComputedStyle(field).height)||0);
+  const tileHeight=Math.max(76,window.innerHeight*.12),gap=12,rows=Math.ceil(actions.length/2);
+  field.style.height=`${Math.ceil(base+rows*(tileHeight+gap)+gap)}px`;
+  actions.forEach(([label,icon,action],index)=>{
+    const button=document.createElement('button');button.type='button';button.className=`tp-phone-tile${index&&game.user.isGM?' tsru-phone-button-gm':''}`;
+    button.style.cssText=`left:${index%2?52:6}%;top:${Math.ceil(base+gap+Math.floor(index/2)*(tileHeight+gap))}px;width:42%;height:${Math.ceil(tileHeight)}px`;
+    button.innerHTML=`<i class="fas ${icon}" aria-hidden="true"></i><span>${label}</span>`;
+    button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();action()});field.append(button);
+  });
 }
 function injectPlanarSheetTab(app,root,actor){
   if(root.querySelector('.tp-sheet-tab')||!editable(actor))return;
@@ -347,6 +360,7 @@ Hooks.once("ready",async()=>{
   });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
   window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,app:null};
   Hooks.on("renderApplication",injectHub);
+  Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectSheet(app,html)});
   Hooks.on("renderActorSheet",injectSheet);
   Hooks.on('renderActorSheetV2',injectSheet);
   Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.prepareData();if(game.user.isGM)void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
