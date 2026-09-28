@@ -83,7 +83,7 @@ test('equipped relic stats produce actor effect changes for scores and rolls',as
  globalThis.Application=class {};
  globalThis.Hooks={once:()=>{}};
  globalThis.CONST={ACTIVE_EFFECT_MODES:{ADD:2}};
- const {planarStatChanges}=await import('../scripts/planar.mjs');
+ const {planarStatChanges,originalSaveTotal}=await import('../scripts/planar.mjs');
  const changes=planarStatChanges({str:2,atkPct:3,hpPct:20,defPct:4,speed:5,savingThrow:1},DEFAULT_CONFIG);
  const find=key=>changes.find(change=>change.key===key)?.value;
  assert.equal(find('system.abilities.str.value'),'2');
@@ -92,6 +92,8 @@ test('equipped relic stats produce actor effect changes for scores and rolls',as
  assert.equal(find('system.attributes.ac.bonus'),'4');
  assert.equal(find('system.attributes.movement.walk'),'5');
  assert.equal(find('system.abilities.wis.bonuses.save'),'1');
+ assert.equal(originalSaveTotal(7,14,16,2),4);
+ assert.equal(originalSaveTotal(4,14,14,1),3);
 });
 test('healing and energy regeneration are main only; healing rope reaches +4',()=>{
  assert(ROPE.includes('healing'));assert(ROPE.includes('energyRegen'));

@@ -195,6 +195,10 @@ const originalScores=new WeakMap();
 const originalFields=new WeakMap();
 const sheetModes=new WeakMap();
 const planarSheetOpen=new WeakMap();
+export function originalSaveTotal(current,baseScore,buffedScore,flatSaveBonus=0){
+  const baseMod=Math.floor((number(baseScore,10)-10)/2),buffedMod=Math.floor((number(buffedScore,10)-10)/2);
+  return number(current)-(buffedMod-baseMod)-number(flatSaveBonus);
+}
 const HSR_ID="telys-star-rail-ultimates";
 const HSR_EFFECT_NAME="Planar Break and Energy bonuses";
 const hsrSyncs=new Map();
@@ -440,8 +444,9 @@ function injectPlanarSheetTab(app,root,actor){
 }
 function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.documentName!=='Actor'||actor.type!=="character")return;
   const root=sheetRoot(app,html);if(!root)return;
+  const frame=root.closest('.application, .window-app')??root;
   injectPlanarSheetTab(app,root,actor);
-  if(root.querySelector(".tp-ability-toggle"))return;
+  if(frame.querySelector('.tp-ability-toggle'))return;
   const fields=Object.fromEntries(ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]));
   const holder=document.createElement("button");holder.type="button";holder.className="tp-ability-toggle";
   const rows=[];
@@ -457,19 +462,51 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
     rows.push({input,base:String(base),buffed:String(input.value),locked:input.readOnly,disabled:input.disabled});
   }
   if(!rows.length)return;
+  const header=frame.querySelector('.window-header, .window-header-container, [data-application-part="header"]');
+  if(!header)return;
+  const saveHeading=[...root.querySelectorAll('h2,h3,h4,.section-title,.card-header')].find(el=>/^saving throws$/i.test(el.textContent.trim()));
+  const saveArea=root.querySelector('.saving-throws, [data-section="saving-throws"]')??saveHeading?.closest('section,.card')??saveHeading?.parentElement;
+  const saveRows=[];
+  for(const key of ABILITIES){
+    const label={str:'strength',dex:'dexterity',con:'constitution',int:'intelligence',wis:'wisdom',cha:'charisma'}[key];
+    const row=saveArea?.querySelector(`[data-ability="${key}"], [data-key="${key}"], [data-ability-id="${key}"]`)
+      ??[...saveArea?.querySelectorAll('li,.saving-throw,.save')??[]].find(el=>new RegExp(`^(${key}|${label})\\b`,'i').test(el.textContent.trim()));
+    const leaves=row?[...row.querySelectorAll('span,strong,button')].filter(el=>/^[+-]\d+$/.test(el.textContent.trim())&&!el.querySelector('span,strong,button')):[];
+    const value=leaves.find(el=>el.matches('.mod,.bonus,.value,[data-tooltip]'))??leaves[0];
+    if(!value)continue;
+    const buffed=Number(value.textContent.trim()),base=fields[`system.abilities.${key}.value`];
+    const flat=number(actor._planarBonuses?.savingThrow,0);
+    const planar=actor.effects.find(effect=>effect.getFlag(ID,'statBonus'));
+    const flatFromEffect=planar?.changes?.filter(change=>change.key===`system.abilities.${key}.bonuses.save`).reduce((sum,change)=>sum+number(change.value),0)??flat;
+    saveRows.push({key,element:value,buffed:value.textContent,original:originalSaveTotal(buffed,base,actor.system.abilities[key]?.value,flatFromEffect)});
+  }
+  const saveSummary=document.createElement('div');saveSummary.className='tp-original-saves';
+  if(saveArea&&saveRows.length<ABILITIES.length){
+    for(const key of ABILITIES){
+      if(saveRows.some(row=>row.key===key))continue;
+      const value=actor.system.abilities[key]?.save;
+      const total=typeof value==='number'?value:number(value?.total,NaN);
+      if(!Number.isFinite(total))continue;
+      const base=fields[`system.abilities.${key}.value`],flat=number(actor.effects.find(effect=>effect.getFlag(ID,'statBonus'))?.changes?.find(change=>change.key===`system.abilities.${key}.bonuses.save`)?.value);
+      const chip=document.createElement('span');chip.textContent=`${key.toUpperCase()} ${originalSaveTotal(total,base,actor.system.abilities[key]?.value,flat)>=0?'+':''}${originalSaveTotal(total,base,actor.system.abilities[key]?.value,flat)}`;saveSummary.append(chip);
+    }
+    if(saveSummary.childElementCount)saveArea.prepend(saveSummary);
+  }
   let boosted=sheetModes.get(actor)==="boosted";
   const render=()=>{
     holder.textContent=boosted?"Buffed stats · view only":"Original stats · editable";
     holder.setAttribute("aria-pressed",String(boosted));
     holder.title=boosted?"Show original scores to edit them":"Show scores after planar buffs";
     for(const row of rows){row.input.value=boosted?row.buffed:row.base;row.input.readOnly=boosted||row.locked;row.input.disabled=boosted||row.disabled;row.input.classList.toggle("tp-buffed-field",boosted)}
+    for(const row of saveRows)row.element.textContent=boosted?row.buffed:`${row.original>=0?'+':''}${row.original}`;
+    saveSummary.hidden=boosted;
   };
   holder.addEventListener("click",()=>{
     if(!boosted){for(const row of rows)row.base=row.input.value}
     boosted=!boosted;sheetModes.set(actor,boosted?"boosted":"original");render();
   });
   render();
-  root.append(holder);
+  header.append(holder);
 }
 export function open(actorId){const app=window.TelysPlanar.app??new PlanarWindow();window.TelysPlanar.app=app;app.actorId=actorId||app.actorId||token()?.id;app.render(true);return app}
 async function migrateLegacyRelics(){
