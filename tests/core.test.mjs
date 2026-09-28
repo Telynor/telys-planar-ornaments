@@ -66,6 +66,19 @@ test('elemental main stats advance at levels eight and fifteen',async()=>{
  assert(ELEMENT_DAMAGE_TYPES.physical.includes('slashing'));
  assert(!ELEMENT_DAMAGE_TYPES.fire.includes('cold'));
 });
+test('elemental sphere damage requires the wearer and damage component to match',async()=>{
+ const {matchingElementalDamageType:match}=await import('../scripts/core.mjs');
+ const elements=[{id:'q7',name:'Quantum'},{id:'i2',name:'Imaginary'},{id:'f3',name:'Fire'}];
+ const mixed={options:{type:'force'},terms:[{options:{damageType:'fire'}},{options:{damageType:'psychic'}}]};
+ assert.equal(match('imaginary','i2',elements,mixed),'psychic');
+ assert.equal(match('quantum','q7',elements,mixed),null);
+ assert.equal(match('quantum','q7',elements,{options:{type:'force'},terms:[{options:{damageType:'force'}}]}),'force');
+ assert.equal(match('quantum','i2',elements,{options:{type:'force'}}),null);
+ assert.equal(match('imaginary','q7',elements,{options:{type:'psychic'}}),null);
+ assert.equal(match('fire','f3',elements,{options:{type:'cold'}}),null);
+ assert.equal(match('quantum',undefined,elements,{options:{type:'force'}}),null);
+ assert.equal(match('quantum','q7',[],{options:{type:'force'}}),null);
+});
 test('healing and energy regeneration are main only; healing rope reaches +4',()=>{
  assert(ROPE.includes('healing'));assert(ROPE.includes('energyRegen'));
  for(const key of ['healing','energyRegen','fire','ice','wind','lightning','physical','quantum','imaginary'])assert(!SUBSTATS.includes(key));

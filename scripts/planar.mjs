@@ -84,7 +84,7 @@ async function processRequest({op,data,user},remote=false){
   }catch(e){console.error(ID,e);ui.notifications.error(`Planar ornaments: ${e.message}`)}finally{pending.delete(key)}
 }
 function selectActor(id){return game.actors.get(id)||token()||actors()[0]}
-class PlanarWindow extends FormApplication{
+class PlanarWindow extends Application{
   static get defaultOptions(){return foundry.utils.mergeObject(super.defaultOptions,{id:"telys-planar-window",title:"Planar Ornaments",width:940,height:740,resizable:true,submitOnChange:false})}
   async _renderInner(){const a=selectActor(this.actorId),cfg=config();this.actorId=a?.id;
     const inventory=storedRelics(),list=inventory.map(asItem);
@@ -127,7 +127,7 @@ class PlanarWindow extends FormApplication{
     })}
   async _updateObject(){}
 }
-class PlanarDesigner extends FormApplication{
+class PlanarDesigner extends Application{
   static get defaultOptions(){return foundry.utils.mergeObject(super.defaultOptions,{id:'telys-planar-designer',title:'Planar Set Display Designer',width:720,height:750,resizable:true})}
   async _renderInner(){if(!game.user.isGM)return $('<p>GM access required.</p>');
     const cfg=config(),sets=cfg.sets,set=sets.find(s=>s.id===this.setId)??sets[0];this.setId=set?.id;this.defaults??=clone(cfg.defaultLayout);
@@ -152,7 +152,7 @@ class PlanarDesigner extends FormApplication{
   }
   async _updateObject(){}
 }
-class ConfigWindow extends FormApplication{
+class ConfigWindow extends Application{
   static get defaultOptions(){return foundry.utils.mergeObject(super.defaultOptions,{id:"telys-planar-config",title:"Planar Ornament Configuration",width:1020,height:850,resizable:true})}
   async _renderInner(){const c=this.draft??config(),items=game.items.contents.filter(i=>i.type==="loot").sort((a,b)=>a.name.localeCompare(b.name));
     const itemOptions=(selected)=>`<option value="">Choose item</option>${items.map(i=>htmlOption(i.uuid,i.name,selected)).join("")}`;
@@ -412,8 +412,7 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
   const root=sheetRoot(app,html);if(!root)return;
   injectPlanarSheetTab(app,root,actor);
   if(root.querySelector(".tp-ability-toggle"))return;
-  const fields=originalFields.get(actor),b=actor._planarBonuses;if(!fields||!Object.keys(b??{}).length)return;
-  const form=root.querySelector("form")??root;
+  const fields=originalFields.get(actor);if(!fields)return;
   const holder=document.createElement("button");holder.type="button";holder.className="tp-ability-toggle";
   const rows=[];
   for(const [name,base] of Object.entries(fields)){
@@ -439,7 +438,9 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
     if(!boosted){for(const row of rows)row.base=row.input.value}
     boosted=!boosted;sheetModes.set(actor,boosted?"boosted":"original");render();
   });
-  render();form.prepend(holder);
+  render();
+  const header=root.querySelector('.sheet-header, [data-application-part="header"], header');
+  (header??root).prepend(holder);
 }
 export function open(actorId){const app=window.TelysPlanar.app??new PlanarWindow();window.TelysPlanar.app=app;app.actorId=actorId||app.actorId||token()?.id;app.render(true);return app}
 async function migrateLegacyRelics(){

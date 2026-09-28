@@ -112,3 +112,11 @@ export function critBonusSources(items,config){
 }
 export const ELEMENT_DAMAGE_TYPES={physical:["bludgeoning","piercing","slashing"],fire:["fire"],ice:["cold"],wind:["thunder"],lightning:["lightning"],quantum:["force"],imaginary:["psychic"],elation:["psychic"]};
 export function elementalDamageBonus(relic){return relic.level>=15?3:relic.level>=8?2:1}
+export function matchingElementalDamageType(main,elementId,elements,roll){
+ const element=Array.isArray(elements)?elements.find(entry=>String(entry.id)===String(elementId)&&elementId!=null&&elementId!==''):null;
+ const normalize=value=>String(value??'').trim().toLowerCase();
+ if(!element||![element.name,element.id].some(value=>normalize(value)===main))return null;
+ const types=ELEMENT_DAMAGE_TYPES[main];if(!types)return null;
+ const explicit=roll?.terms?.map(term=>normalize(term?.options?.damageType)).filter(Boolean)??[];
+ return types.find(type=>(explicit.length?explicit:[normalize(roll?.options?.type)]).includes(type))??null;
+}

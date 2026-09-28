@@ -1,5 +1,5 @@
-import {ID,number,damageBreakdown,ELEMENT_DAMAGE_TYPES,elementalDamageBonus,bonuses} from './core.mjs';
-import {dynamicStats,conditionalDamage,summonerFor,activeSets} from './effects.mjs';
+import {ID,number,damageBreakdown,matchingElementalDamageType,elementalDamageBonus,bonuses} from './core.mjs';
+import {dynamicStats,conditionalDamage,summonerFor,activeSets,hsr} from './effects.mjs';
 import {allItems,equippedRelics} from './inventory.mjs';
 const processed=new WeakSet();
 const relic=item=>item.getFlag?.(ID,'relic');
@@ -45,10 +45,12 @@ export function registerDamageHooks(getConfig){
     if(roll.options?.type==='temphp')return;
     const cfg=getConfig(),effects=activeDamageEffects(workflow.actor,cfg);
     const typed=[];
-    for(const item of equippedRelics(workflow.actor)){const r=relic(item);if(!r?.equipped||r.slot!=='sphere'||!ELEMENT_DAMAGE_TYPES[r.main])continue;
-      const types=ELEMENT_DAMAGE_TYPES[r.main];
-      const terms=roll.terms?.filter(t=>t?.options?.damageType&&types.includes(t.options.damageType));
-      if(terms?.length||types.includes(roll.options?.type))typed.push({label:`${item.name} (${r.main})`,amount:elementalDamageBonus(r),type:types.includes(roll.options?.type)?roll.options.type:terms[0].options.damageType});
+    const hsrId='telys-star-rail-ultimates';
+    const elements=game.modules.get(hsrId)?.active?game.settings.get(hsrId,'elements'):[];
+    const wearerElementId=hsr(workflow.actor).elementId;
+    for(const item of equippedRelics(workflow.actor)){const r=relic(item);if(!r?.equipped||r.slot!=='sphere')continue;
+      const type=matchingElementalDamageType(r.main,wearerElementId,elements,roll);
+      if(type)typed.push({label:`${item.name} (${r.main})`,amount:elementalDamageBonus(r),type});
     }
     typed.push(...conditionalDamage(workflow.actor,workflow));
     const owner=summonerFor(workflow.actor);if(owner&&activeSets(owner).has('321'))typed.push(...conditionalDamage(owner,workflow).filter(e=>e.label==='Arcadia'));
