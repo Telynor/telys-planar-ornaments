@@ -4,20 +4,21 @@ export const STATS = ["savingThrow", "initiativeBonus", "critRange", "critDamage
 export const SPHERE = ["hpPct", "atkPct", "defPct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
 export const ROPE = ["hpPct", "atkPct", "defPct", "breakEffect", "energyRegen", "healing"];
 export const SUBSTATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageDice", "str", "dex", "con", "int", "wis", "cha", "speed", "breakEffect", "effectHit"];
-export const LABELS = {savingThrow:"Saving throw bonus",initiativeBonus:"Initiative bonus",critRange:"Crit range",critDamageDice:"Critical damage dice",str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma",hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP %",atkPct:"ATK %",defPct:"DEF %",speed:"Speed (ft)",speedPct:"Movement Speed %",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate",effectRes:"Effect RES %",breakEffect:"Break Effect",energyRegen:"Energy Regeneration",healing:"Outgoing Healing %",damagePct:"Damage %",physical:"Physical Damage",fire:"Fire Damage",ice:"Ice Damage",wind:"Wind Damage",lightning:"Lightning Damage",quantum:"Quantum Damage",imaginary:"Imaginary Damage",elation:"Elation Damage"};
+export const LABELS = {savingThrow:"Saving throw bonus",initiativeBonus:"Initiative bonus",critRange:"Crit range",critDamageDice:"Critical damage dice",str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma",hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP bonus",atkPct:"Attack bonus",defPct:"AC bonus",speed:"Speed (ft)",speedPct:"Movement Speed %",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate",effectRes:"Effect RES %",breakEffect:"Break Effect",energyRegen:"Energy Regeneration",healing:"Outgoing Healing bonus",damagePct:"Damage %",physical:"Physical Damage",fire:"Fire Damage",ice:"Ice Damage",wind:"Wind Damage",lightning:"Lightning Damage",quantum:"Quantum Damage",imaginary:"Imaginary Damage",elation:"Elation Damage"};
 export const DEFAULT_CONFIG = {
   sets:[],currencyItem:"",currencyXp:1,xpPerLevel:100,
   defaultLayout:{sphere:{x:51,y:58,scale:1.5},rope:{x:50,y:45,scale:1.9}},
   materials:[], // {uuid,xp}: owned inventory items and XP per copy
   main:{}, // {stat:{min,max}} values in points or percentage points
   sub:Object.fromEntries(SUBSTATS.map(key=>[key,{min:1,max:3,enabled:true}])),
-  mapping:{hpPct:"con",atkPct:"str",defPct:"dex",hpFlat:"system.attributes.hp.bonuses.overall",atkFlat:"system.bonuses.mwak.attack",defFlat:"system.attributes.ac.bonus",speed:"system.attributes.movement.walk",speedPct:"system.attributes.movement.walk",critRate:"",critDamage:"",effectHit:"",effectRes:"",breakEffect:"",energyRegen:"",healing:"",physical:"",fire:"",ice:"",wind:"",lightning:"",quantum:"",imaginary:"",elation:"",damagePct:""},
+  mapping:{hpPct:"system.attributes.hp.bonuses.overall",atkPct:"system.bonuses.mwak.attack",defPct:"system.attributes.ac.bonus",hpFlat:"system.attributes.hp.bonuses.overall",atkFlat:"system.bonuses.mwak.attack",defFlat:"system.attributes.ac.bonus",speed:"system.attributes.movement.walk",speedPct:"system.attributes.movement.walk",critRate:"",critDamage:"",effectHit:"",effectRes:"",breakEffect:"",energyRegen:"",healing:"",physical:"",fire:"",ice:"",wind:"",lightning:"",quantum:"",imaginary:"",elation:"",damagePct:""},
   flat:{hpFlat:1,atkFlat:1,defFlat:1,speed:1},
   crit:{base:20,pointsPerRange:1}
 };
 export const number = (v,fallback=0)=>Number.isFinite(Number(v))?Number(v):fallback;
 export const currencyCost=(xp,currencyXp)=>Math.ceil(Math.max(0,number(xp))/Math.max(1,Math.floor(number(currencyXp,1))));
 export const random = (array,rng=Math.random)=>array[Math.floor(rng()*array.length)];
+export const customSubstatSlots=level=>Math.min(4,1+Math.floor(Math.max(0,Math.min(15,number(level)))/5));
 export function generate(set,slot,config,rng=Math.random){
   if(!set || !["sphere","rope"].includes(slot))throw Error("Choose a set and a slot.");
   const stat=random(slot==="sphere"?SPHERE:ROPE,rng);
@@ -28,7 +29,7 @@ export function generateCustom(set,slot,main,level,substats=[]){
   if(!(slot==='sphere'?SPHERE:ROPE).includes(main))throw Error('Choose a valid main stat for that piece.');
   const n=Number(level);
   if(!Number.isInteger(n)||n<0||n>15)throw Error('Level must be between 0 and 15.');
-  if(!Array.isArray(substats)||substats.length>Math.min(n,4))throw Error('Too many substats for this level.');
+  if(!Array.isArray(substats)||substats.length>customSubstatSlots(n))throw Error('Too many substats for this level.');
   const seen=new Set();
   const sub=substats.map(({key,value})=>{
     const v=Number(value);
@@ -39,7 +40,10 @@ export function generateCustom(set,slot,main,level,substats=[]){
   return {setId:set.id,slot,level:n,xp:0,main,sub,equipped:false};
 }
 export function mainValue(relic,config){
-  if(relic.main==="healing")return relic.level>=15?3:relic.level>=8?2:1;
+  const tier=Math.floor(Math.max(0,Math.min(15,number(relic.level)))/5);
+  if(relic.main==="atkPct"||relic.main==="breakEffect")return tier;
+  if(relic.main==="hpPct")return 5*(tier+1);
+  if(relic.main==="defPct"||relic.main==="healing")return tier+1;
   const bounds=config.main?.[relic.main]??{};
   const min=number(bounds.min),max=number(bounds.max,min);
   return min+(max-min)*Math.min(15,Math.max(0,number(relic.level)))/15;

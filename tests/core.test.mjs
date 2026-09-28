@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generate,generateCustom,advance,mainValue,bonuses,currencyCost,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
+import {generate,generateCustom,customSubstatSlots,advance,mainValue,bonuses,currencyCost,DEFAULT_CONFIG,SPHERE,ROPE,SUBSTATS,ID} from '../scripts/core.mjs';
 test('custom generator preserves selected stats and enforces slot and level limits',()=>{
  const set={id:'301'};
- assert.deepEqual(generateCustom(set,'sphere','fire',2,[{key:'speed',value:10},{key:'critRange',value:2}]),{setId:'301',slot:'sphere',level:2,xp:0,main:'fire',sub:[{key:'speed',value:10,rolls:1},{key:'critRange',value:2,rolls:1}],equipped:false});
+ assert.deepEqual(generateCustom(set,'sphere','fire',5,[{key:'speed',value:10},{key:'critRange',value:2}]),{setId:'301',slot:'sphere',level:5,xp:0,main:'fire',sub:[{key:'speed',value:10,rolls:1},{key:'critRange',value:2,rolls:1}],equipped:false});
  assert.throws(()=>generateCustom(set,'rope','fire',0,[]),/main stat/);
- assert.throws(()=>generateCustom(set,'sphere','fire',0,[{key:'speed',value:5}]),/Too many/);
- assert.throws(()=>generateCustom(set,'sphere','fire',2,[{key:'speed',value:5},{key:'speed',value:10}]),/distinct/);
+ assert.deepEqual(generateCustom(set,'sphere','fire',0,[{key:'speed',value:5}]).sub,[{key:'speed',value:5,rolls:1}]);
+ assert.throws(()=>generateCustom(set,'sphere','fire',0,[{key:'speed',value:5},{key:'critRange',value:1}]),/Too many/);
+ assert.throws(()=>generateCustom(set,'sphere','fire',5,[{key:'speed',value:5},{key:'speed',value:10}]),/distinct/);
+ assert.deepEqual([0,4,5,9,10,14,15].map(customSubstatSlots),[1,1,2,2,3,3,4]);
  assert.throws(()=>generateCustom(set,'sphere','fire',16,[]),/Level/);
 });
 import {CANONICAL_SETS} from '../scripts/catalog.mjs';
@@ -18,11 +20,12 @@ test('currency costs one item per configured XP with the remainder rounded up',(
  assert.equal(currencyCost(80,40),2);
  assert.equal(currencyCost(0,40),0);
 });
-test('canonical main stats stay in their slot and interpolate from +0 to +15',()=>{
- const c=structuredClone(DEFAULT_CONFIG);c.main.hpPct={min:4,max:34};
+test('flat main bonuses increase at levels five, ten and fifteen',()=>{
+ const c=structuredClone(DEFAULT_CONFIG),levels=[0,5,10,15];
+ for(const [stat,expected] of Object.entries({atkPct:[0,1,2,3],hpPct:[5,10,15,20],defPct:[1,2,3,4],healing:[1,2,3,4],breakEffect:[0,1,2,3]}))
+   assert.deepEqual(levels.map(level=>mainValue({main:stat,level},c)),expected);
  const s=generate({id:'x'},'sphere',c,()=>0),r=generate({id:'x'},'rope',c,()=>0);
- assert(SPHERE.includes(s.main));assert(ROPE.includes(r.main));assert.equal(mainValue(s,c),4);
- s.level=5;assert.equal(mainValue(s,c),14);s.level=15;assert.equal(mainValue(s,c),34);
+ assert(SPHERE.includes(s.main));assert(ROPE.includes(r.main));
 });
 test('every level reveals or increases one of four substats, never beyond +15',()=>{
  const c=structuredClone(DEFAULT_CONFIG);c.xpPerLevel=100;
@@ -63,12 +66,12 @@ test('elemental main stats advance at levels eight and fifteen',async()=>{
  assert(ELEMENT_DAMAGE_TYPES.physical.includes('slashing'));
  assert(!ELEMENT_DAMAGE_TYPES.fire.includes('cold'));
 });
-test('healing and energy regeneration are main only; healing rope caps at +3',()=>{
+test('healing and energy regeneration are main only; healing rope reaches +4',()=>{
  assert(ROPE.includes('healing'));assert(ROPE.includes('energyRegen'));
  for(const key of ['healing','energyRegen','fire','ice','wind','lightning','physical','quantum','imaginary'])assert(!SUBSTATS.includes(key));
  const c=structuredClone(DEFAULT_CONFIG),relic={main:'healing',level:0};
  assert.equal(mainValue(relic,c),1);relic.level=8;assert.equal(mainValue(relic,c),2);
- relic.level=15;assert.equal(mainValue(relic,c),3);
+ relic.level=15;assert.equal(mainValue(relic,c),4);
 });
 test('all 28 canonical sets have translated two-piece bonuses and local emblems',()=>{
  assert.equal(CANONICAL_SETS.length,28);
