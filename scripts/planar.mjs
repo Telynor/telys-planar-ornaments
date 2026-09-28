@@ -87,7 +87,8 @@ class PlanarWindow extends FormApplication{
     const gm=game.user.isGM?`<nav><button type="button" data-op="settings">GM Configuration</button><button type="button" data-op="designer">Set Display Designer</button><label>Trailblaze Companion <input type="checkbox" data-trailblaze ${a?.getFlag(ID,"trailblazeCompanion")?"checked":""}></label><select data-set>${cfg.sets.map(s=>htmlOption(s.id,s.name)).join("")}</select><select data-slot><option value="sphere">Sphere</option><option value="rope">Rope</option></select><button type="button" data-op="generate">Generate random planar reward</button></nav>`:"";
     const activeSet=cfg.sets.find(s=>list.some(i=>{const r=relic(i);return r?.setId===s.id&&r.equipped&&r.slot==='sphere'})&&list.some(i=>{const r=relic(i);return r?.setId===s.id&&r.equipped&&r.slot==='rope'}));
     const chosen=cfg.sets.find(s=>s.id===this.selectedSetId)??activeSet??cfg.sets[0];
-    const preview=`<div class="tp-stage">${visualHtml(chosen,esc,{equipped:activeSet?.id===chosen?.id,defaultLayout:cfg.defaultLayout})}<div class="tp-stage-info"><h3>Planar Ornaments</h3><label>Display set <select data-preview-set>${cfg.sets.map(s=>htmlOption(s.id,s.name,chosen?.id)).join('')}</select></label><p>${esc(chosen?.adaptedEffect??'Equip a matching Sphere and Link Rope for the two-piece bonus.')}</p><p>${activeSet?.id===chosen?.id?'Matching set equipped':'Equip matching pieces to activate this set.'}</p></div></div>`;
+    const visibleSlots=['sphere','rope'].filter(slot=>list.some(i=>{const r=relic(i);return r?.setId===chosen?.id&&r.equipped&&r.slot===slot}));
+    const preview=`<div class="tp-stage">${visualHtml(chosen,esc,{equipped:activeSet?.id===chosen?.id,defaultLayout:cfg.defaultLayout,visibleSlots})}<div class="tp-stage-info"><h3>Planar Ornaments</h3><label>Display set <select data-preview-set>${cfg.sets.map(s=>htmlOption(s.id,s.name,chosen?.id)).join('')}</select></label><p>${esc(chosen?.adaptedEffect??'Equip a matching Sphere and Link Rope for the two-piece bonus.')}</p><p>${activeSet?.id===chosen?.id?'Matching set equipped':'Equip matching pieces to activate this set.'}</p></div></div>`;
     return $(`<div class="tp-window tp-main"><header><h2>Planar Ornaments</h2><select data-actor>${actors().map(x=>htmlOption(x.id,x.name,a?.id)).join("")}</select></header>${gm}${preview}<div class="tp-grid">${cards||"<p>No planar ornaments in this character’s inventory.</p>"}</div></div>`)}
   activateListeners(html){super.activateListeners(html);html.find("[data-actor]").on("change",e=>{this.actorId=e.target.value;this.render(false)});
     html.find("[data-preview-set]").on("change",e=>{this.selectedSetId=e.currentTarget.value;this.render(false)});
@@ -231,11 +232,20 @@ function patchCharacter(){const prototype=CONFIG.Actor.dataModels.character?.pro
   const original=prototype.prepareDerivedData;prototype.prepareDerivedData=function(...args){applyBonuses(this);return original.apply(this,args)};
   prototype._telysPlanarPatched=true;
 }
+function openGenerator(){
+  if(!game.user.isGM)return;
+  const available=game.actors.filter(a=>a.type==='character'),sets=config().sets;
+  if(!available.length||!sets.length)return ui.notifications.warn('A character and planar set are required.');
+  const content=`<form class="tp-generate-form"><label>Character <select name="actorId">${available.map(a=>htmlOption(a.id,a.name)).join('')}</select></label><label>Planar set <select name="setId">${sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select name="slot"><option value="random">Random Sphere or Link Rope</option><option value="sphere">Sphere</option><option value="rope">Link Rope</option></select></label></form>`;
+  return new Dialog({title:'Generate Planar Relic',content,buttons:{generate:{icon:'<i class="fas fa-dice"></i>',label:'Generate',callback:html=>{const form=html[0].querySelector('.tp-generate-form');if(!form)return;const data=Object.fromEntries(new FormData(form));if(data.slot==='random')data.slot=Math.random()<0.5?'sphere':'rope';void send('generate',data)}}},default:'generate'}).render(true);
+}
 function injectHub(app,html){if(app.id==='tsru-gm-panel'&&game.user.isGM){const root=html[0]??html;if(root&&!root.querySelector('.tp-gm-designer')){const button=document.createElement('button');button.type='button';button.className='tp-gm-designer';button.textContent='Planar Set Display Designer';button.addEventListener('click',()=>new PlanarDesigner().render(true));root.querySelector('.window-content')?.prepend(button)??root.prepend(button)}return}
   if(app.id!=="tsru-hub")return;
-  const root=html[0]??html;if(!root||root.querySelector(".tp-hub-entry"))return;
-  const button=document.createElement("button");button.type="button";button.className="tp-hub-entry";button.innerHTML='<i class="fas fa-circle-nodes"></i> Upgrade Planar Relics';
-  button.addEventListener("click",e=>{e.stopPropagation();open()});root.querySelector(".tsru-phone-scroll")?.append(button);
+  const root=html[0]??html,container=root?.querySelector('.tsru-phone-scroll');if(!container||container.querySelector('.tp-hub-entry'))return;
+  for(const [label,icon,action] of [['Upgrade Planar Relics','fa-circle-nodes',()=>open()],...(game.user.isGM?[['Planar Relics Config','fa-gear',()=>new ConfigWindow().render(true)],['Generate Planar Relics','fa-dice',openGenerator]]:[])]){
+    const button=document.createElement('button');button.type='button';button.className='tp-hub-entry';button.innerHTML=`<i class="fas ${icon}"></i> ${label}`;
+    button.addEventListener('click',event=>{event.stopPropagation();action()});container.append(button);
+  }
 }
 function injectSheet(app,html){const actor=app.actor;if(actor?.type!=="character")return;
   const root=html[0]??html;if(root.querySelector(".tp-ability-toggle"))return;

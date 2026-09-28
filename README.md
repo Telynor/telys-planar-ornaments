@@ -1,6 +1,6 @@
 # Tely's Planar Ornaments
 
-Standalone Foundry VTT v14 / dnd5e 5.3.3 module for Planar Spheres and Link Ropes. Open from the HSR Hub's **Upgrade Planar Relics** button or the `TelysPlanar.open()` macro. GM configuration is available from the Planar interface and from `TelysPlanar.openConfig()`.
+Standalone Foundry VTT v14 / dnd5e 5.3.3 module for Planar Spheres and Link Ropes. Open from the HSR phone's **Upgrade Planar Relics** menu tile or the `TelysPlanar.open()` macro. GMs also have **Planar Relics Config** and **Generate Planar Relics** phone tiles. Generation prompts for the recipient character, set, and piece (including a random piece option). Configuration remains available from the Planar interface and `TelysPlanar.openConfig()`.
 
 The 28 canonical planar sets have 56 piece icons plus 28 set emblems. The set display projects the matching Sphere and Link Rope when equipped, and previews any selected set. GMs can drag and scale each projected piece per set in **Set Display Designer**, available from the HSR GM panel, Planar interface, or Foundry module settings. **Apply Sphere to all sets** and **Apply Link Rope to all sets** copy the chosen piece’s X, Y and scale to every set without changing the other piece, and save that piece as the default for new custom sets. Set preview artwork uses the original 128×128 PNG assets; the starfield and rings are rendered with CSS.
 
@@ -15,3 +15,5 @@ The GM's custom set builder adds two-piece bonuses by selecting a substat and a 
 ## Artwork and licensing
 
 Relic and set icon PNGs were obtained from [Mar-7th/StarRailRes](https://github.com/Mar-7th/StarRailRes), which distributes the resource archive under AGPL-3.0. Original Honkai: Star Rail artwork and character designs belong to their respective rights holders. The module is an unofficial fan project.
+
+The display background uses only decorative rings. Sphere and Link Rope renders are independent images that the GM can position and scale in the Set Display Designer; no relic image is baked into the background.

@@ -65,7 +65,7 @@ test('all 28 canonical sets have translated two-piece bonuses and local emblems'
 test('set projection uses per-set positions and shows matched status',()=>{
  const set={...CANONICAL_SETS[0],layout:{rope:{x:35,y:70,scale:2}}};
  assert.equal(layoutFor(set).rope.x,35);
- const markup=visualHtml(set,s=>s,{equipped:true});
+ const markup=visualHtml(set,s=>s,{equipped:true,visibleSlots:['sphere','rope']});
  assert.match(markup,/tp-complete/);assert.match(markup,/left:35%;top:70%/);
  assert.match(markup,/2-piece set active/);
 });
@@ -84,4 +84,13 @@ test('applying one piece layout to all preserves the other and becomes the new-s
  assert.equal(result.sets[0].layout.rope.x,35);assert.equal(result.sets[1].layout.rope.x,72);
  assert.equal(layoutFor({id:'new'},result.defaults).sphere.scale,2.5);
  assert.equal(sets[0].layout.sphere.x,10);
+});
+test('player projection shows only equipped slots and has no baked set art',()=>{
+ const set={id:'301',name:'Space Sealing Station',sphereImage:'sphere.png',ropeImage:'rope.png'};
+ const empty=visualHtml(set,x=>x);
+ assert.doesNotMatch(empty,/sphere.png|rope.png|tp-set-seal/);
+ const one=visualHtml(set,x=>x,{visibleSlots:['rope']});
+ assert.match(one,/rope.png/);assert.doesNotMatch(one,/sphere.png/);
+ const designer=visualHtml(set,x=>x,{designer:true});
+ assert.match(designer,/sphere.png/);assert.match(designer,/rope.png/);
 });
