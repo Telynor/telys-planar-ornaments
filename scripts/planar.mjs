@@ -249,13 +249,15 @@ function openGenerator(){
   const content=`<form class="tp-generate-form"><label>Planar set <select name="setId">${sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select name="slot"><option value="random">Random Sphere or Link Rope</option><option value="sphere">Sphere</option><option value="rope">Link Rope</option></select></label></form>`;
   return new Dialog({title:'Generate Planar Relic',content,buttons:{generate:{icon:'<i class="fas fa-dice"></i>',label:'Generate',callback:html=>{const form=html[0].querySelector('.tp-generate-form');if(!form)return;const data=Object.fromEntries(new FormData(form));if(data.slot==='random')data.slot=Math.random()<0.5?'sphere':'rope';void send('generate',data)}}},default:'generate'}).render(true);
 }
-function injectHub(app,html){if(app.id==='tsru-gm-panel'&&game.user.isGM){const root=html[0]??html;if(root&&!root.querySelector('.tp-gm-designer')){const button=document.createElement('button');button.type='button';button.className='tp-gm-designer';button.textContent='Planar Set Display Designer';button.addEventListener('click',()=>new PlanarDesigner().render(true));root.querySelector('.window-content')?.prepend(button)??root.prepend(button)}return}
+function injectHub(app,html){
   if(app.id!=="tsru-hub")return;
-  const root=html[0]??html,container=root?.querySelector('.tsru-phone-scroll');if(!container||container.querySelector('.tp-hub-entry'))return;
-  for(const [label,icon,action] of [['Upgrade Planar Relics','fa-circle-nodes',()=>open()],...(game.user.isGM?[['Planar Relics Config','fa-gear',()=>new ConfigWindow().render(true)],['Generate Planar Relics','fa-dice',openGenerator]]:[])]){
-    const button=document.createElement('button');button.type='button';button.className='tp-hub-entry';button.innerHTML=`<i class="fas ${icon}"></i> ${label}`;
-    button.addEventListener('click',event=>{event.stopPropagation();action()});container.append(button);
+  const root=html[0]??html,container=root?.querySelector('.tsru-phone-scroll');if(!container||!game.user.isGM||container.querySelector('.tp-phone-tiles'))return;
+  const tiles=document.createElement('div');tiles.className='tp-phone-tiles';
+  for(const [label,icon,action] of [['Upgrade Planar Relics','fa-circle-nodes',()=>open()],['Planar Relics Config','fa-gear',()=>new ConfigWindow().render(true)],['Generate Planar Relics','fa-dice',openGenerator],['Set Display Designer','fa-object-group',()=>new PlanarDesigner().render(true)]]){
+    const button=document.createElement('button');button.type='button';button.className='tp-phone-tile';button.innerHTML=`<i class="fas ${icon}" aria-hidden="true"></i><span>${label}</span>`;
+    button.addEventListener('click',event=>{event.stopPropagation();action()});tiles.append(button);
   }
+  container.append(tiles);
 }
 function injectPlanarSheetTab(app,root,actor){
   if(root.querySelector('.tp-sheet-tab')||!editable(actor))return;
