@@ -79,7 +79,7 @@ async function processRequest({op,data,user},remote=false){
         entry.relic=result;await game.settings.set(ID,'relics',inventory);
       }
     }
-    for(const a of game.actors)if(a.type==='character')a.prepareData();
+    for(const a of game.actors)if(a.type==='character')await syncPlanarStats(a);
     Hooks.callAll(`${ID}.changed`,actor);window.TelysPlanar?.app?.render(false);
   }catch(e){console.error(ID,e);ui.notifications.error(`Planar ornaments: ${e.message}`)}finally{pending.delete(key)}
 }
@@ -178,7 +178,7 @@ class ConfigWindow extends Application{
     html.find("[data-remove-set]").on("click",e=>{this.capture(html);this.draft.sets.splice(Number(e.currentTarget.dataset.removeSet),1);this.render(false)});
     html.find("[data-add-bonus]").on("click",e=>{this.capture(html);this.draft.sets[Number(e.currentTarget.dataset.addBonus)].bonuses.push({stat:SUBSTATS[0],value:1});this.render(false)});
     html.find("[data-remove-bonus]").on("click",e=>{const row=e.currentTarget.closest("[data-bonus]"),idx=Number(row.dataset.bonus),n=[...row.parentElement.children].indexOf(row);this.capture(html);this.draft.sets[idx].bonuses.splice(n,1);this.render(false)});
-    html.find("[data-save]").on("click",async()=>{this.capture(html);this.draft.materials=this.draft.materials.filter(m=>m.uuid);await game.settings.set(ID,"config",this.draft);for(const a of game.actors)a.prepareData();ui.notifications.info("Planar configuration saved.");this.close()})
+    html.find("[data-save]").on("click",async()=>{this.capture(html);this.draft.materials=this.draft.materials.filter(m=>m.uuid);await game.settings.set(ID,"config",this.draft);for(const a of game.actors)if(a.type==='character')await syncPlanarStats(a);ui.notifications.info("Planar configuration saved.");this.close()})
   }
   capture(h){const c=this.draft??config(),currency=h[0].querySelector('[data-item-drop="currency"]');c.currencyItem=currency?.querySelector('input')?.value??'';c.currencyName=currency?.dataset.itemName||currency?.querySelector('.tp-drop-name')?.textContent||'';c.currencyXp=Math.max(1,Math.floor(number(h.find('[data-currency-xp]').val(),1)));c.xpPerLevel=Math.max(1,Math.floor(number(h.find("[data-xp-level]").val(),100)));
     c.materials=[...h[0].querySelectorAll("[data-mat-row]")].slice(0,3).map(row=>({uuid:row.querySelector('[data-item-drop] input')?.value??'',name:row.querySelector('[data-item-drop]')?.dataset.itemName||row.querySelector('.tp-drop-name')?.textContent||'',xp:Math.max(1,Math.floor(number(row.querySelector("[data-mat-xp]").value)))}));
@@ -198,6 +198,39 @@ const planarSheetOpen=new WeakMap();
 const HSR_ID="telys-star-rail-ultimates";
 const HSR_EFFECT_NAME="Planar Break and Energy bonuses";
 const hsrSyncs=new Map();
+const statSyncs=new Map();
+function syncPlanarStats(actor){
+  const previous=statSyncs.get(actor.id)??Promise.resolve();
+  const next=previous.catch(()=>{}).then(()=>applyPlanarStatEffect(actor));statSyncs.set(actor.id,next);
+  void next.finally(()=>{if(statSyncs.get(actor.id)===next)statSyncs.delete(actor.id)}).catch(()=>{});
+  return next;
+}
+export function planarStatChanges(b,cfg){
+  const changes=[],mode=CONST.ACTIVE_EFFECT_MODES.ADD;
+  const add=(key,value)=>{if(Number.isFinite(value)&&value!==0)changes.push({key,mode,value:String(value),priority:30})};
+  for(const key of ABILITIES)add(`system.abilities.${key}.value`,number(b[key]));
+  for(const [stat,paths] of Object.entries({atkPct:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),atkFlat:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),hpPct:['system.attributes.hp.bonuses.overall'],hpFlat:['system.attributes.hp.bonuses.overall'],defPct:['system.attributes.ac.bonus'],defFlat:['system.attributes.ac.bonus']}))
+    for(const path of paths)add(path,Math.floor(number(b[stat])));
+  for(const [stat,value] of Object.entries(b)){
+    if([...ABILITIES,'atkPct','atkFlat','hpPct','hpFlat','defPct','defFlat','breakEffect','energyRegen'].includes(stat))continue;
+    if(stat==='savingThrow'){for(const key of ABILITIES)add(`system.abilities.${key}.bonuses.save`,Math.floor(number(value)));continue}
+    if(stat==='effectHit'){for(const type of ['msak','rsak'])add(`system.bonuses.${type}.attack`,Math.floor(number(value)));continue}
+    if(stat==='initiativeBonus'){add('system.attributes.init.bonus',Math.floor(number(value)));continue}
+    const target=cfg.mapping[stat],delta=number(value)*number(cfg.flat?.[stat],1);
+    if(ABILITIES.includes(target))add(`system.abilities.${target}.value`,delta);
+    else if(/^system\.[a-zA-Z0-9_.]+$/.test(target)&&!target.includes('__proto__')&&!target.includes('constructor'))add(target,stat.endsWith('Pct')?Math.floor(delta):delta);
+  }
+  return changes;
+}
+async function applyPlanarStatEffect(actor){
+  if(!game.user.isGM||actor?.type!=='character')return;
+  const cfg=config(),b=bonuses(allItems(actor),cfg);
+  for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
+  const changes=planarStatChanges(b,cfg),existing=actor.effects.find(e=>e.getFlag(ID,'statBonus'));
+  if(!changes.length){if(existing)await existing.delete();return}
+  if(existing){if(JSON.stringify(existing.changes)!==JSON.stringify(changes))await existing.update({changes});return}
+  await actor.createEmbeddedDocuments('ActiveEffect',[{name:'Planar ornament bonuses',img:'icons/magic/light/orb-sphere-gold.webp',changes,disabled:false,flags:{[ID]:{statBonus:true}}}]);
+}
 function syncHsrBonuses(actor){
   const previous=hsrSyncs.get(actor.id)??Promise.resolve();
   const next=previous.catch(()=>{}).then(()=>applyHsrBonuses(actor));hsrSyncs.set(actor.id,next);
@@ -283,10 +316,7 @@ function applyBonuses(model){const actor=model.parent;if(!actor||actor.type!=="c
   originalFields.set(actor,fields);
   // dnd5e computes ability modifiers, HP and derived rolls after this wrapper runs.
 }
-function patchCharacter(){const prototype=CONFIG.Actor.dataModels.character?.prototype;if(!prototype||prototype._telysPlanarPatched)return;
-  const original=prototype.prepareDerivedData;prototype.prepareDerivedData=function(...args){applyBonuses(this);return original.apply(this,args)};
-  prototype._telysPlanarPatched=true;
-}
+function patchCharacter(){}
 function openGenerator(){
   if(!game.user.isGM)return;
   const sets=config().sets;
@@ -412,13 +442,13 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
   const root=sheetRoot(app,html);if(!root)return;
   injectPlanarSheetTab(app,root,actor);
   if(root.querySelector(".tp-ability-toggle"))return;
-  const fields=originalFields.get(actor);if(!fields)return;
+  const fields=Object.fromEntries(ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]));
   const holder=document.createElement("button");holder.type="button";holder.className="tp-ability-toggle";
   const rows=[];
   for(const [name,base] of Object.entries(fields)){
     const input=[...root.querySelectorAll("input[name]")].find(el=>el.name===name);
     if(!input||input.type==="hidden")continue;
-    rows.push({input,base:String(base),buffed:String(input.value),locked:input.readOnly,disabled:input.disabled});
+    rows.push({input,base:String(base),buffed:String(foundry.utils.getProperty(actor,name)??input.value),locked:input.readOnly,disabled:input.disabled});
   }
   for(const [field,label] of [["breakEffectScore","Break Effect ability score"],["regenScore","Energy Regen ability score"]]){
     const input=root.querySelector(`input[aria-label="${label}"]`);
@@ -439,8 +469,7 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
     boosted=!boosted;sheetModes.set(actor,boosted?"boosted":"original");render();
   });
   render();
-  const header=root.querySelector('.sheet-header, [data-application-part="header"], header');
-  (header??root).prepend(holder);
+  root.append(holder);
 }
 export function open(actorId){const app=window.TelysPlanar.app??new PlanarWindow();window.TelysPlanar.app=app;app.actorId=actorId||app.actorId||token()?.id;app.render(true);return app}
 async function migrateLegacyRelics(){
@@ -468,8 +497,8 @@ Hooks.once("ready",async()=>{
   Hooks.on("renderActorSheet",injectSheet);
   Hooks.on('renderCharacterActorSheet',injectSheet);
   Hooks.on('renderActorSheetV2',injectSheet);
-  Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.prepareData();if(game.user.isGM)void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
-  if(game.user.isGM)for(const actor of game.actors)void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));
+  Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.prepareData();if(game.user.isGM){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
+  if(game.user.isGM)for(const actor of game.actors){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}
   for(const event of ["createItem","updateItem","deleteItem"])Hooks.on(event,item=>{if(item.parent?.type==="character")void syncHsrBonuses(item.parent).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
   Hooks.on("updateActor",(actor,change)=>{if(foundry.utils.hasProperty(foundry.utils.expandObject(change),`flags.${HSR_ID}.ultimate`))void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
   for(const event of ["createItem","updateItem","deleteItem"])Hooks.on(event,item=>{if(item.parent?.type!=="character"||!item.getFlag?.(ID,"relic"))return;

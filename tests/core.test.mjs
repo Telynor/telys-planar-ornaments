@@ -79,6 +79,20 @@ test('elemental sphere damage requires the wearer and damage component to match'
  assert.equal(match('quantum',undefined,elements,{options:{type:'force'}}),null);
  assert.equal(match('quantum','q7',[],{options:{type:'force'}}),null);
 });
+test('equipped relic stats produce actor effect changes for scores and rolls',async()=>{
+ globalThis.Application=class {};
+ globalThis.Hooks={once:()=>{}};
+ globalThis.CONST={ACTIVE_EFFECT_MODES:{ADD:2}};
+ const {planarStatChanges}=await import('../scripts/planar.mjs');
+ const changes=planarStatChanges({str:2,atkPct:3,hpPct:20,defPct:4,speed:5,savingThrow:1},DEFAULT_CONFIG);
+ const find=key=>changes.find(change=>change.key===key)?.value;
+ assert.equal(find('system.abilities.str.value'),'2');
+ assert.equal(find('system.bonuses.mwak.attack'),'3');
+ assert.equal(find('system.attributes.hp.bonuses.overall'),'20');
+ assert.equal(find('system.attributes.ac.bonus'),'4');
+ assert.equal(find('system.attributes.movement.walk'),'5');
+ assert.equal(find('system.abilities.wis.bonuses.save'),'1');
+});
 test('healing and energy regeneration are main only; healing rope reaches +4',()=>{
  assert(ROPE.includes('healing'));assert(ROPE.includes('energyRegen'));
  for(const key of ['healing','energyRegen','fire','ice','wind','lightning','physical','quantum','imaginary'])assert(!SUBSTATS.includes(key));
