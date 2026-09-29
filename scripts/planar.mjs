@@ -7,6 +7,26 @@ import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,cur
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
 const config=()=>{const saved=clone(game.settings.get(ID,"config"));const merged=foundry.utils.mergeObject(clone(DEFAULT_CONFIG),saved,{inplace:false});const customized=new Map(merged.sets.map(s=>[s.id,s]));merged.sets=[...CANONICAL_SETS.map(s=>customized.get(s.id)??clone(s)),...merged.sets.filter(s=>!CANONICAL_SETS.some(c=>c.id===s.id))];return merged};
+export function sheetCriticalThreshold(actor){
+  const thresholds=[];
+  const collect=value=>{const threshold=Number(value);if(Number.isInteger(threshold)&&threshold>=2&&threshold<=20)thresholds.push(threshold)};
+  collect(actor?.system?.attributes?.crit?.threshold);
+  for(const item of actor?.items??[]){
+    if(item.system?.equipped===false)continue;
+    const activities=item.system?.activities;
+    for(const activity of activities?.values?.()??Object.values(activities??{}))if(activity?.type==='attack'||activity?.attack)collect(activity.criticalThreshold??activity.attack?.critical?.threshold??item.system?.criticalThreshold);
+    if(!activities||!Object.values(activities).length)collect(item.system?.criticalThreshold);
+  }
+  return thresholds.length?Math.min(...thresholds):20;
+}
+export function criticalSnapshot(actor,baseThreshold=sheetCriticalThreshold(actor)){
+  const cfg=config(),items=allItems(actor),dynamic=dynamicStats(actor,cfg),relicBonuses=bonuses(items,cfg),base=Math.max(2,Math.min(20,Math.floor(number(baseThreshold,20))));
+  const bonus=critBonusSources(items,cfg)+Math.floor(number(dynamic.critRange));
+  const automatic=criticalThreshold(base,bonus),manual=Number(actor?.getFlag?.(HSR_ID,'planarCritAdjustment')?.threshold);
+  const threshold=Number.isInteger(manual)&&manual>=2&&manual<=20?manual:automatic;
+  const adjustedBonuses={...relicBonuses};for(const [key,value] of Object.entries(dynamic))adjustedBonuses[key]=(adjustedBonuses[key]??0)+value;
+  return {base,bonus,automatic,threshold,critDice:Math.max(0,Math.floor(number(relicBonuses.critDamageDice)+number(dynamic.critDamageDice))),adjustedBonuses};
+}
 const relic=i=>i.getFlag(ID,"relic");
 const editable=a=>game.user.isGM||a?.testUserPermission(game.user,"OWNER");
 const actors=()=>game.actors.filter(a=>a.type==="character"&&editable(a));
@@ -539,12 +559,15 @@ Hooks.once("ready",async()=>{
     for(const actor of game.actors)if(actor.type==='character')void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | Combat Break Effect sync`,error));
   });
   Hooks.on("dnd5e.preRollAttackV2",rollConfig=>{
-    const actor=rollConfig.subject?.actor,count=actor?critBonusSources(allItems(actor),config())+Math.floor(number(dynamicStats(actor,config()).critRange))+firstAttackBonus(actor,number(bonuses(allItems(actor),config()).critDamageDice)+number(dynamicStats(actor,config()).critDamageDice)):0;
-    if(!actor||count<=0||!rollConfig.rolls?.[0])return;
-    const opts=rollConfig.rolls[0].options??={};
-    opts.criticalSuccess=criticalThreshold(opts.criticalSuccess??rollConfig.subject.criticalThreshold??20,count);
+    const actor=rollConfig.subject?.actor;
+    if(!actor||!rollConfig.rolls?.[0])return;
+    const opts=rollConfig.rolls[0].options??={},base=rollConfig.subject.criticalThreshold??opts.criticalSuccess??sheetCriticalThreshold(actor);
+    const snapshot=criticalSnapshot(actor,base),extra=firstAttackBonus(actor,snapshot.critDice);
+    const hasOverride=Number.isInteger(Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold))&&Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold)>=2&&Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold)<=20;
+    if(snapshot.bonus+extra<=0&&!hasOverride)return;
+    opts.criticalSuccess=hasOverride?snapshot.threshold:criticalThreshold(base,snapshot.bonus+extra);
   });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
-  window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,app:null};
+  window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,criticalSnapshot,app:null};
   Hooks.on("renderApplication",(app,html)=>{injectHub(app,html);injectHubConfig(app,html)});
   Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectHubConfig(app,html);injectSheet(app,html);requestAnimationFrame(()=>{injectHub(app,app.element);injectHubConfig(app,app.element);injectSheet(app,app.element)})});
   Hooks.on("renderActorSheet",injectSheet);
