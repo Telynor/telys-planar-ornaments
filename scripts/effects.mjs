@@ -19,6 +19,11 @@ export function allyActors(actor){
  const member=combat.combatants.find(c=>c.actor?.id===actor.id),side=member?.token?.disposition??member?.token?.document?.disposition;
  return combat.combatants.filter(c=>c.actor?.type==='character'&&number(c.actor.system?.attributes?.hp?.value)>0&&(c.token?.disposition??c.token?.document?.disposition)===side).map(c=>c.actor);
 }
+const subspaceCombatWearers=new Map();
+function subspaceWearers(combat){
+ if(!subspaceCombatWearers.has(combat.id))subspaceCombatWearers.set(combat.id,new Set(combat.combatants.filter(c=>c.actor&&activeSets(c.actor).has('329')&&number(c.actor.system?.attributes?.movement?.walk)>=45).map(c=>c.actor.id)));
+ return subspaceCombatWearers.get(combat.id);
+}
 export function dynamicStats(actor,config){
  const result={},add=(k,v)=>{result[k]=(result[k]??0)+v};const sets=activeSets(actor),walk=number(actor.system?.attributes?.movement?.walk);
  if(sets.has('301')&&walk>=35)add('str',1);
@@ -32,6 +37,7 @@ export function dynamicStats(actor,config){
  if(sets.has('318')&&summoned(actor))add('critDamageDice',2);
  if(sets.has('325')&&game.combat?.started&&game.modules.get('telys-star-rail-ultimates')?.active){const punchline=number(game.settings.get('telys-star-rail-ultimates','punchline'));if(punchline>=4)add('critDamageDice',punchline>=8?2:1)}
  if(sets.has('328')){const max=number(hsr(actor).max);if(max>=59)add('damageFlat',2);else if(max>=41)add('damageFlat',1)}
+ if(game.combat?.started&&game.combat.combatants.some(c=>c.actor?.id===actor.id)&&allyActors(actor).some(wearer=>subspaceWearers(game.combat).has(wearer.id)))add('breakEffect',1);
  // Party buffs never multiply the same named nonstacking set.
  let lushaka=false,amphoreus=false;
  for(const wearer of game.actors??[]){if(wearer.type!=='character'||wearer.id===actor.id)continue;const wsets=activeSets(wearer);
@@ -84,12 +90,23 @@ export function temporaryStats(actor){if(!game.combat?.started)return {};const s
 }
 export function registerConditionHooks(){
  const refresh=()=>{for(const actor of game.actors)if(actor.type==='character')actor.prepareData()};
- Hooks.on('combatStart',async combat=>{
+ const firstJoyTurn=async combat=>{
+  if(!game.user.isGM||game.users.filter(user=>user.isGM&&user.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id!==game.user.id||!combat?.started)return;
+  const combatant=combat.combatant,actor=combatant?.actor;
+  if(!actor||combatant.getFlag?.(ID,'joyFirstTurn')||combatant.getFlag?.('telys-star-rail-ultimates','actionAdvance')||!activeSets(actor).has('330'))return;
   const api=game.modules.get('telys-star-rail-ultimates')?.api;
-  if(!game.user.isGM||typeof api?.insertActionAdvanceTurn!=='function')return;
-  for(const combatant of combat.combatants){const actor=combatant.actor;if(actor&&activeSets(actor).has('308')&&number(actor.system?.attributes?.movement?.walk)>=35)await api.insertActionAdvanceTurn(combatant.id)}
+  if(typeof api?.setPunchline!=='function'||typeof api?.insertActionAdvanceTurn!=='function')return;
+  await combatant.setFlag(ID,'joyFirstTurn',true);
+  await api.setPunchline(4);
+  await api.insertActionAdvanceTurn(combatant.id);
+ };
+ Hooks.on('combatStart',async combat=>{
+  subspaceWearers(combat);
+  const api=game.modules.get('telys-star-rail-ultimates')?.api;
+  if(game.user.isGM&&typeof api?.insertActionAdvanceTurn==='function')for(const combatant of combat.combatants){const actor=combatant.actor;if(actor&&activeSets(actor).has('308')&&number(actor.system?.attributes?.movement?.walk)>=35)await api.insertActionAdvanceTurn(combatant.id)}
+  await firstJoyTurn(combat);
  });
- Hooks.on('updateCombat',(combat,change)=>{
+ Hooks.on('updateCombat',async(combat,change)=>{
   if(!('turn' in change)&&!('round' in change))return;
   const actor=combat.combatant?.actor;if(!actor||!combat.started)return;
   const s=state(actor),marker=`${combat.round}:${combat.combatant.id}`;if(s.lastTurn===marker)return;s.lastTurn=marker;
@@ -99,6 +116,7 @@ export function registerConditionHooks(){
   if(s.fireTurns>0)s.fireTurns--;
   s.skillSpent=0;s.lastSkillPoints=game.modules.get('telys-star-rail-ultimates')?.api?.getSkillPoints?.();
   refresh();
+  await firstJoyTurn(combat);
  });
  Hooks.on('tsruSkillPointsChanged',(value)=>{
   const actor=game.combat?.combatant?.actor;if(!actor)return;
@@ -123,6 +141,6 @@ export function registerConditionHooks(){
   }
   refresh();
  });
- Hooks.on('deleteCombat',()=>{combatState.clear();refresh()});
+ Hooks.on('deleteCombat',combat=>{combatState.clear();subspaceCombatWearers.delete(combat.id);refresh()});
  Hooks.on('tsruPunchlineChanged',refresh);
 }

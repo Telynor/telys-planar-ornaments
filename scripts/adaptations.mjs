@@ -27,5 +27,7 @@ export const ADAPTATIONS={
   325:{bonuses:[['elation',1]],text:'Elation damage +1; at Punchline 4/8 gain one/two critical dice.'},
   326:{bonuses:[],text:'Follow-up attack grants Strength +1 for two turns; enemy defeat grants allies one critical die.'},
   327:{bonuses:[['critRange',1]],text:'Crit Range +1; with another Trailblaze Companion gain two critical dice.'},
-  328:{bonuses:[],text:'At maximum Energy 41–58 gain +1 damage, at 59–60 gain +2.'}
+  328:{bonuses:[],text:'At maximum Energy 41–58 gain +1 damage, at 59–60 gain +2.'},
+  329:{bonuses:[['speed',5]],text:'Speed +5 ft; at 45 ft or higher, allies in combat gain nonstacking Break Effect +1.'},
+  330:{bonuses:[['speed',5]],text:'Speed +5 ft; on the wearer’s first turn of combat, Punchline becomes 4 and the wearer immediately gains an Action Advance turn.'}
 };

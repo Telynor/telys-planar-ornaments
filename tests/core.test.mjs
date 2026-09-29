@@ -13,7 +13,7 @@ test('custom generator preserves selected stats and enforces slot and level limi
 });
 import {CANONICAL_SETS} from '../scripts/catalog.mjs';
 import {visualHtml,layoutFor,applyLayoutToAll} from '../scripts/visuals.mjs';
-import {activeSets,dynamicStats} from '../scripts/effects.mjs';
+import {activeSets,dynamicStats,registerConditionHooks} from '../scripts/effects.mjs';
 import {storedRelics,equippedRelics,allItems,mergeLegacyRelics} from '../scripts/inventory.mjs';
 test('currency costs one item per configured XP with the remainder rounded up',()=>{
  assert.equal(currencyCost(100,40),3);
@@ -106,11 +106,32 @@ test('healing and energy regeneration are main only; healing rope reaches +4',()
  assert.equal(mainValue(relic,c),1);relic.level=8;assert.equal(mainValue(relic,c),2);
  relic.level=15;assert.equal(mainValue(relic,c),4);
 });
-test('all 28 canonical sets have translated two-piece bonuses and local emblems',()=>{
- assert.equal(CANONICAL_SETS.length,28);
+test('all 30 canonical sets have translated two-piece bonuses and local emblems',()=>{
+ assert.equal(CANONICAL_SETS.length,30);
  for(const set of CANONICAL_SETS){assert(set.adaptedEffect);assert.match(set.setImage,/assets\/sets\/\d+\.png$/);assert(set.sphereImage&&set.ropeImage)}
  assert.deepEqual(CANONICAL_SETS.find(s=>s.id==='311').bonuses,[{stat:'str',value:1}]);
  assert.deepEqual(CANONICAL_SETS.find(s=>s.id==='317').bonuses,[{stat:'energyRegen',value:1}]);
+ for(const id of ['329','330'])assert.deepEqual(CANONICAL_SETS.find(s=>s.id===id).bonuses,[{stat:'speed',value:5}]);
+});
+test('Subspace Break Effect is nonstacking and only reaches combat allies at 45 ft',()=>{
+ const piece=(setId,slot)=>({flags:{[ID]:{relic:{setId,slot,equipped:true}}}});
+ const make=(id,walk,sets)=>({id,type:'character',items:sets.flatMap(set=>[piece(set,'sphere'),piece(set,'rope')]),system:{attributes:{movement:{walk},hp:{value:10,max:10}}},getFlag:()=>null});
+ const wearer=make('wearer',45,['329']),other=make('other',30,[]),second=make('second',45,['329']),enemy=make('enemy',30,[]);
+ const combatants=[wearer,other,second,enemy].map(actor=>({actor,token:{disposition:actor===enemy?-1:1}}));
+ const previous=globalThis.game;globalThis.game={actors:[wearer,other,second,enemy],combat:{started:true,combatants}};
+ try{assert.equal(dynamicStats(other,{}).breakEffect,1);assert.equal(dynamicStats(wearer,{}).breakEffect,1);assert.equal(dynamicStats(enemy,{}).breakEffect,undefined);wearer.system.attributes.movement.walk=40;second.system.attributes.movement.walk=40;assert.equal(dynamicStats(other,{}).breakEffect,1)}finally{globalThis.game=previous}
+});
+test('Moment of Joy sets Punchline to four and advances on the wearer’s first combat turn once',async()=>{
+ const calls=[],handlers=new Map(),previousGame=globalThis.game,previousHooks=globalThis.Hooks;
+ const piece=slot=>({flags:{[ID]:{relic:{setId:'330',slot,equipped:true}}}});
+ const actor={id:'joy',type:'character',items:[piece('sphere'),piece('rope')],prepareData:()=>{}};
+ const combatant={id:'turn1',actor,getFlag:()=>combatant.triggered,setFlag:async()=>{combatant.triggered=true}};
+ const combat={id:'combat1',started:true,round:1,turn:0,combatants:[combatant],combatant};
+ const api={setPunchline:async n=>calls.push(['punchline',n]),insertActionAdvanceTurn:async id=>calls.push(['advance',id])};
+ globalThis.game={user:{id:'gm',isGM:true},users:[{id:'gm',isGM:true,active:true}],actors:[actor],combat,modules:{get:()=>({api})}};
+ globalThis.Hooks={on:(name,fn)=>handlers.set(name,fn)};
+ try{registerConditionHooks();await handlers.get('updateCombat')(combat,{turn:0});await handlers.get('updateCombat')(combat,{turn:0});assert.deepEqual(calls,[['punchline',4],['advance','turn1']])}
+ finally{globalThis.game=previousGame;globalThis.Hooks=previousHooks}
 });
 test('set projection uses per-set positions and shows matched status',()=>{
  const set={...CANONICAL_SETS[0],layout:{rope:{x:35,y:70,scale:2}}};

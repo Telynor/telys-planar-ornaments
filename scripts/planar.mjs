@@ -534,6 +534,10 @@ Hooks.once("init",()=>{game.settings.register(ID,"config",{scope:"world",config:
 Hooks.once("ready",async()=>{
   await migrateLegacyRelics().catch(error=>{console.error(`${ID} | Relic migration failed`,error);ui.notifications.error('Planar relic migration failed. Original actor items were kept.')});
   patchCharacter();registerDamageHooks(config);registerConditionHooks();
+  for(const event of ['combatStart','deleteCombat'])Hooks.on(event,()=>{
+    if(!game.user.isGM)return;
+    for(const actor of game.actors)if(actor.type==='character')void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | Combat Break Effect sync`,error));
+  });
   Hooks.on("dnd5e.preRollAttackV2",rollConfig=>{
     const actor=rollConfig.subject?.actor,count=actor?critBonusSources(allItems(actor),config())+Math.floor(number(dynamicStats(actor,config()).critRange))+firstAttackBonus(actor,number(bonuses(allItems(actor),config()).critDamageDice)+number(dynamicStats(actor,config()).critDamageDice)):0;
     if(!actor||count<=0||!rollConfig.rolls?.[0])return;

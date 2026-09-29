@@ -427,6 +427,26 @@ export const CANONICAL_SETS = [
     "sphereImage": "modules/telys-planar-ornaments/assets/relic/328_0.png",
     "ropeName": "Peripheral Conduits of the Life Sciences Institute",
     "ropeImage": "modules/telys-planar-ornaments/assets/relic/328_1.png"
+  },
+  {
+    "id":"329",
+    "name":"Subspace ASC Center",
+    "canonicalEffect":"Increases the wearer's SPD by 6%. When the wearer's SPD reaches 145 or higher, increases all allies' Break Effect by 15% after entering combat. This effect cannot stack.",
+    "bonuses":[],"canonical":true,
+    "sphereName":"ASC Dark Fissure",
+    "sphereImage":"modules/telys-planar-ornaments/assets/relic/329_0.png",
+    "ropeName":"ASC Negative Film",
+    "ropeImage":"modules/telys-planar-ornaments/assets/relic/329_1.png"
+  },
+  {
+    "id":"330",
+    "name":"God's Moment of Joy",
+    "canonicalEffect":"Increases the wearer's SPD by 6%. When the wearer's Elation reaches 40% or higher, the wearer's action advances by 40% immediately when entering combat.",
+    "bonuses":[],"canonical":true,
+    "sphereName":"Moment of Joy's Eternal Stage",
+    "sphereImage":"modules/telys-planar-ornaments/assets/relic/330_0.png",
+    "ropeName":"Moment of Joy's Magic Prop",
+    "ropeImage":"modules/telys-planar-ornaments/assets/relic/330_1.png"
   }
 ];
 for(const set of CANONICAL_SETS){

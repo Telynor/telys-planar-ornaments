@@ -4,7 +4,7 @@ Standalone Foundry VTT v14 / dnd5e 5.3.3 module for Planar Spheres and Link Rope
 
 Every player sees the same Planar collection. Equipped ornaments show the wearer's token at the top left, and the collection can be filtered by wearer. The equipment display defaults to the selected character's equipped set and projects only the Sphere or Link Rope that character has equipped.
 
-All generated pieces live in one world-wide Planar collection instead of character inventories. Everyone can browse, filter by set/slot/equipment status, and select a relic to equip or upgrade with their character's materials. Hovering shows level, main stat and substats; equipped pieces have the wearer's token portrait on the icon. A character can equip one Sphere and one Link Rope, and a piece can be equipped by one character at a time. On first load, an active GM moves existing character-held planar pieces into the shared collection, retaining their equipped wearers. The 28 canonical planar sets have 56 piece icons. The display projects each piece only when equipped on the selected character. GMs can drag and scale pieces per set in **Set Display Designer**. **Apply Sphere to all sets** and **Apply Link Rope to all sets** copy that piece’s position and scale to all sets and set the default for new custom sets. The display background contains decorative rings only.
+All generated pieces live in one world-wide Planar collection instead of character inventories. Everyone can browse, filter by set/slot/equipment status, and select a relic to equip or upgrade with their character's materials. Hovering shows level, main stat and substats; equipped pieces have the wearer's token portrait on the icon. A character can equip one Sphere and one Link Rope, and a piece can be equipped by one character at a time. On first load, an active GM moves existing character-held planar pieces into the shared collection, retaining their equipped wearers. The 30 canonical planar sets have 60 piece icons. The display projects each piece only when equipped on the selected character. GMs can drag and scale pieces per set in **Set Display Designer**. **Apply Sphere to all sets** and **Apply Link Rope to all sets** copy that piece’s position and scale to all sets and set the default for new custom sets. The display background contains decorative rings only.
 
 ## Upgrading
 
@@ -12,7 +12,7 @@ The GM drags up to three XP granting Items into the configuration and sets XP pe
 
 Equipped relic bonuses apply while equipped. The character sheet's Original Stats toggle presents editable base numbers; Buffed Stats mode is read-only. Crit Range starts from the sheet's existing threshold. Break Effect and Energy Regen use the HSR module's actor fields when that module is active. Elemental and other damage adjustments require Midi-QOL.
 
-The GM's custom set builder adds two-piece bonuses by selecting a substat and a flat amount. The 28 built-in conversions and their intended conditions are listed in `scripts/adaptations.mjs`; some conditional combat triggers still require live Foundry verification and are not represented as always-on bonuses.
+The GM's custom set builder adds two-piece bonuses by selecting a substat and a flat amount. The 30 built-in conversions and their intended conditions are listed in `scripts/adaptations.mjs`; some conditional combat triggers still require live Foundry verification and are not represented as always-on bonuses.
 
 ## Artwork and licensing
 
