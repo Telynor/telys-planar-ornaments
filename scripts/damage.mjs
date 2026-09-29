@@ -1,4 +1,4 @@
-import {ID,number,damageBreakdown,matchingElementalDamageType,elementalDamageBonus,bonuses} from './core.mjs';
+import {ID,number,damageBreakdown,matchingElementalDamageType,elementalDamageBonus,bonuses,ELEMENT_DAMAGE_TYPES} from './core.mjs';
 import {dynamicStats,conditionalDamage,summonerFor,activeSets,hsr} from './effects.mjs';
 import {allItems,equippedRelics} from './inventory.mjs';
 const processed=new WeakSet();
@@ -52,6 +52,13 @@ export function registerDamageHooks(getConfig){
       const type=matchingElementalDamageType(r.main,wearerElementId,elements,roll);
       if(type)typed.push({label:`${item.name} (${r.main})`,amount:elementalDamageBonus(r),type});
     }
+    const combatBuffs=workflow.actor.getFlag?.('telys-star-rail-ultimates','combatStatBuffs');
+    if(game.combat?.started&&combatBuffs?.combatId===game.combat.id){
+      const delta=combatBuffs.planar??{},type=roll.options?.type||'untyped';
+      if(number(delta.damagePct))effects.push({label:'Combat damage buff',rate:number(delta.damagePct)});
+      if(number(delta.damageFlat))typed.push({label:'Combat damage buff',amount:number(delta.damageFlat),type});
+      for(const [key,types] of Object.entries(ELEMENT_DAMAGE_TYPES))if(number(delta[key])&&types.includes(type))typed.push({label:`Combat ${key} damage buff`,amount:number(delta[key]),type});
+    }
     typed.push(...conditionalDamage(workflow.actor,workflow));
     const owner=summonerFor(workflow.actor);if(owner&&activeSets(owner).has('321'))typed.push(...conditionalDamage(owner,workflow).filter(e=>e.label==='Arcadia'));
     const ownerBonus=owner&&activeSets(owner).has('319')&&number(owner.system?.attributes?.hp?.max)>=60?1:0;
@@ -60,7 +67,7 @@ export function registerDamageHooks(getConfig){
     if(!effects.length&&!typed.length&&!(isCrit&&critBonus))return;
     processed.add(workflow);
     const details=damageBreakdown(roll.total,effects),extra=details.total-details.base;
-    if(extra<=0&&!typed.length&&!(isCrit&&critBonus))return;
+    if(extra===0&&!typed.length&&!(isCrit&&critBonus))return;
     try{
       const api=globalThis.MidiQOL;
       if(typeof api?.addRollTo!=='function'||typeof workflow.setDamageRoll!=='function')throw Error('Midi-QOL evaluated roll modifier API unavailable.');

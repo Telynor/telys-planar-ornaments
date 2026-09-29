@@ -26,10 +26,8 @@ function subspaceWearers(combat){
 }
 export function dynamicStats(actor,config){
  const result={},add=(k,v)=>{result[k]=(result[k]??0)+v};const sets=activeSets(actor),walk=number(actor.system?.attributes?.movement?.walk);
- const manual=actor.getFlag?.('telys-star-rail-ultimates','planarCritAdjustment')??{};
- const rate=Math.max(-95,Math.min(95,number(manual.rate))),bonus=Math.max(-20,Math.min(20,Math.trunc(number(manual.bonus??manual.dice))));
- if(rate){add('critRate',rate);add('critRange',Math.trunc(rate/5))}
- if(bonus)add('critDamageBonus',bonus);
+ const combatBuffs=actor.getFlag?.('telys-star-rail-ultimates','combatStatBuffs');
+ if(game.combat?.started&&combatBuffs?.combatId===game.combat.id)for(const [key,value] of Object.entries(combatBuffs.planar??{}))add(key,number(value));
  if(sets.has('301')&&walk>=35)add('str',1);
  if(sets.has('303'))add('str',1);
  if(sets.has('304')&&number(actor._planarBonuses?.effectHit)>=2)add('dex',1);

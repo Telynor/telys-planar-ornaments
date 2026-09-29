@@ -86,8 +86,8 @@ export function splitInputs(text){return String(text??"").split(",").map(s=>s.tr
 
 export function damageBreakdown(base,effects){
   const original=Math.max(0,number(base));
-  const lines=effects.filter(e=>number(e.rate)>0).map(e=>({label:String(e.label),rate:number(e.rate),bonus:Math.floor(original*number(e.rate)/100)}));
-  return {base:original,lines,total:original+lines.reduce((sum,line)=>sum+line.bonus,0)};
+  const lines=effects.filter(e=>number(e.rate)!==0).map(e=>({label:String(e.label),rate:number(e.rate),bonus:Math.floor(original*number(e.rate)/100)}));
+  return {base:original,lines,total:Math.max(0,original+lines.reduce((sum,line)=>sum+line.bonus,0))};
 }
 export function arcadiaRate(allies){
   const diff=Math.floor(number(allies,4))-4;

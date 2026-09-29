@@ -19,10 +19,11 @@ export function sheetCriticalThreshold(actor){
   }
   return thresholds.length?Math.min(...thresholds):20;
 }
+function combatThreshold(actor){const b=actor?.getFlag?.(HSR_ID,'combatStatBuffs');return game.combat?.started&&b?.combatId===game.combat.id?b.threshold:undefined}
 export function criticalSnapshot(actor,baseThreshold=sheetCriticalThreshold(actor)){
   const cfg=config(),items=allItems(actor),dynamic=dynamicStats(actor,cfg),relicBonuses=bonuses(items,cfg),base=Math.max(2,Math.min(20,Math.floor(number(baseThreshold,20))));
   const bonus=critBonusSources(items,cfg)+Math.floor(number(dynamic.critRange));
-  const automatic=criticalThreshold(base,bonus),manual=Number(actor?.getFlag?.(HSR_ID,'planarCritAdjustment')?.threshold);
+  const automatic=criticalThreshold(base,bonus),manual=Number(combatThreshold(actor));
   const threshold=Number.isInteger(manual)&&manual>=2&&manual<=20?manual:automatic;
   const adjustedBonuses={...relicBonuses};for(const [key,value] of Object.entries(dynamic))adjustedBonuses[key]=(adjustedBonuses[key]??0)+value;
   return {base,bonus,automatic,threshold,critDamageBonus:Math.max(0,Math.floor(number(relicBonuses.critDamageBonus)+number(dynamic.critDamageBonus))),adjustedBonuses};
@@ -258,6 +259,12 @@ export function planarStatChanges(b,cfg,actor){
   }
   return changes;
 }
+function standardStatEffects(actor){
+  const cfg=config(),b=bonuses(allItems(actor),cfg);for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
+  const changes=planarStatChanges(b,cfg,actor),hsrChanges=[];
+  for(const [stat,field] of [['breakEffect','breakEffectScore'],['energyRegen','regenScore']]){const boost=Math.floor(number(b[stat]));if(boost)hsrChanges.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,number(foundry.utils.getProperty(actor._source,`flags.${HSR_ID}.ultimate.${field}`),10)+boost))),priority:50});}
+  return [{name:'Standard planar bonuses',changes},{name:'Standard Star Rail bonuses',changes:hsrChanges}];
+}
 async function applyPlanarStatEffect(actor){
   if(!game.user.isGM||actor?.type!=='character')return;
   const cfg=config(),b=bonuses(allItems(actor),cfg);
@@ -439,10 +446,13 @@ function injectPlanarSheetTab(app,root,actor){
   }).join('');
   const visibleSlots=['sphere','rope'].filter(slot=>equipped.some(i=>{const r=relic(i);return r?.setId===selected?.id&&r.slot===slot}));
   panel.innerHTML=`<div class="tp-sheet-content"><h2>Planar Relics</h2>${selected?visualHtml(selected,esc,{equipped:visibleSlots.length===2,defaultLayout:cfg.defaultLayout,visibleSlots}):''}<div class="tp-sheet-slots">${slots}</div><button type="button" data-planar-open>Open upgrades and set details</button></div>`;
+  panel.addEventListener('click',event=>event.stopPropagation());
   panel.querySelector('[data-planar-open]').addEventListener('click',()=>open(actor.id));
-  panel.querySelectorAll('[data-planar-equip]').forEach(button=>button.addEventListener('click',async()=>{
-    await send('equip',{actorId:actor.id,itemId:button.dataset.planarEquip,equipped:button.dataset.equip==='true'});
-    if(game.user.isGM)app.render(false);
+  panel.querySelectorAll('[data-planar-equip]').forEach(button=>button.addEventListener('click',async event=>{
+    event.preventDefault();event.stopPropagation();button.disabled=true;
+    try{await send('equip',{actorId:actor.id,itemId:button.dataset.planarEquip,equipped:button.dataset.equip==='true'});}
+    catch(error){ui.notifications.error(error.message);}
+    finally{button.disabled=false;}
   }));
   const otherTabs=[...nav.querySelectorAll('[data-tab]')];
   const deactivate=()=>{
@@ -461,7 +471,7 @@ function injectPlanarSheetTab(app,root,actor){
   };
   root.addEventListener('click',event=>{
     const target=event.target.closest('[data-tab], [data-action="tab"]');
-    if(!target)return;
+    if(!target||!nav.contains(target))return;
     if(target===tab||target.closest('.tp-sheet-tab')){
       event.preventDefault();event.stopImmediatePropagation();planarSheetOpen.set(app,true);activate();
     }else deactivate();
@@ -563,11 +573,11 @@ Hooks.once("ready",async()=>{
     if(!actor||!rollConfig.rolls?.[0])return;
     const opts=rollConfig.rolls[0].options??={},base=rollConfig.subject.criticalThreshold??opts.criticalSuccess??sheetCriticalThreshold(actor);
     const snapshot=criticalSnapshot(actor,base),extra=firstAttackBonus(actor,snapshot.critDamageBonus);
-    const hasOverride=Number.isInteger(Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold))&&Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold)>=2&&Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold)<=20;
+    const hasOverride=Number.isInteger(Number(combatThreshold(actor)))&&Number(combatThreshold(actor))>=2&&Number(combatThreshold(actor))<=20;
     if(snapshot.bonus+extra<=0&&!hasOverride)return;
     opts.criticalSuccess=hasOverride?snapshot.threshold:criticalThreshold(base,snapshot.bonus+extra);
   });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
-  window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,criticalSnapshot,app:null};
+  window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,criticalSnapshot,combatBuffSupport:true,standardStatEffects,syncCombatStats:async actor=>{await syncPlanarStats(actor);await syncHsrBonuses(actor)},app:null};
   Hooks.on("renderApplication",(app,html)=>{injectHub(app,html);injectHubConfig(app,html)});
   Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectHubConfig(app,html);injectSheet(app,html);requestAnimationFrame(()=>{injectHub(app,app.element);injectHubConfig(app,app.element);injectSheet(app,app.element)})});
   Hooks.on("renderActorSheet",injectSheet);
@@ -576,7 +586,9 @@ Hooks.once("ready",async()=>{
   Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.prepareData();if(game.user.isGM){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
   if(game.user.isGM)for(const actor of game.actors){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}
   for(const event of ["createItem","updateItem","deleteItem"])Hooks.on(event,item=>{if(item.parent?.type==="character")void syncHsrBonuses(item.parent).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
-  Hooks.on("updateActor",(actor,change)=>{if(foundry.utils.hasProperty(foundry.utils.expandObject(change),`flags.${HSR_ID}.ultimate`))void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
+  Hooks.on("updateActor",(actor,change)=>{
+    if(foundry.utils.hasProperty(foundry.utils.expandObject(change),`flags.${HSR_ID}.combatStatBuffs`)||Object.keys(foundry.utils.expandObject(change)?.flags?.[HSR_ID]??{}).some(key=>key.includes('combatStatBuffs'))){void syncPlanarStats(actor);void syncHsrBonuses(actor);}
+if(foundry.utils.hasProperty(foundry.utils.expandObject(change),`flags.${HSR_ID}.ultimate`))void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
   for(const event of ["createItem","updateItem","deleteItem"])Hooks.on(event,item=>{if(item.parent?.type!=="character"||!item.getFlag?.(ID,"relic"))return;
     for(const actor of game.actors)if(actor.type==="character"&&actor.id!==item.parent.id)actor.prepareData();
   });
