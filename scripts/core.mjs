@@ -1,10 +1,11 @@
 export const ID = "telys-planar-ornaments";
 export const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
-export const STATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageDice", "str", "dex", "con", "int", "wis", "cha", "hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "speedPct", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect", "energyRegen", "healing", "damagePct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary", "elation"];
+export const STATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageBonus", "str", "dex", "con", "int", "wis", "cha", "hpFlat", "atkFlat", "defFlat", "hpPct", "atkPct", "defPct", "speed", "speedPct", "critRate", "critDamage", "effectHit", "effectRes", "breakEffect", "energyRegen", "healing", "damagePct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary", "elation"];
 export const SPHERE = ["hpPct", "atkPct", "defPct", "physical", "fire", "ice", "wind", "lightning", "quantum", "imaginary"];
 export const ROPE = ["hpPct", "atkPct", "defPct", "breakEffect", "energyRegen", "healing"];
-export const SUBSTATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageDice", "str", "dex", "con", "int", "wis", "cha", "speed", "breakEffect", "effectHit"];
-export const LABELS = {savingThrow:"Saving throw bonus",initiativeBonus:"Initiative bonus",critRange:"Crit range",critDamageDice:"Critical damage dice",str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma",hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP bonus",atkPct:"Attack bonus",defPct:"AC bonus",speed:"Speed (ft)",speedPct:"Movement Speed %",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate",effectRes:"Effect RES %",breakEffect:"Break Effect",energyRegen:"Energy Regeneration",healing:"Outgoing Healing bonus",damagePct:"Damage %",physical:"Physical Damage",fire:"Fire Damage",ice:"Ice Damage",wind:"Wind Damage",lightning:"Lightning Damage",quantum:"Quantum Damage",imaginary:"Imaginary Damage",elation:"Elation Damage"};
+export const SUBSTATS = ["savingThrow", "initiativeBonus", "critRange", "critDamageBonus", "str", "dex", "con", "int", "wis", "cha", "speed", "breakEffect", "effectHit"];
+export const LABELS = {savingThrow:"Saving throw bonus",initiativeBonus:"Initiative bonus",critRange:"Crit range",critDamageBonus:"Critical damage bonus",critDamageDice:"Critical damage bonus",str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma",hpFlat:"HP",atkFlat:"ATK",defFlat:"DEF",hpPct:"HP bonus",atkPct:"Attack bonus",defPct:"AC bonus",speed:"Speed (ft)",speedPct:"Movement Speed %",critRate:"Crit Rate %",critDamage:"Crit Damage %",effectHit:"Effect Hit Rate",effectRes:"Effect RES %",breakEffect:"Break Effect",energyRegen:"Energy Regeneration",healing:"Outgoing Healing bonus",damagePct:"Damage %",physical:"Physical Damage",fire:"Fire Damage",ice:"Ice Damage",wind:"Wind Damage",lightning:"Lightning Damage",quantum:"Quantum Damage",imaginary:"Imaginary Damage",elation:"Elation Damage"};
+export const canonicalStat=key=>key==='critDamageDice'?'critDamageBonus':key;
 export const DEFAULT_CONFIG = {
   sets:[],currencyItem:"",currencyXp:1,xpPerLevel:100,
   defaultLayout:{sphere:{x:51,y:58,scale:1.5},rope:{x:50,y:45,scale:1.9}},
@@ -73,11 +74,11 @@ export function bonuses(items,config){
   const result={};const bySet={};
   for(const item of items){const r=item.flags?.[ID]?.relic;if(!r?.equipped)continue;
     result[r.main]=(result[r.main]??0)+mainValue(r,config);
-    for(const sub of r.sub)result[sub.key]=(result[sub.key]??0)+number(sub.value);
+    for(const sub of r.sub){const key=canonicalStat(sub.key);result[key]=(result[key]??0)+number(sub.value)}
     (bySet[r.setId]??=[]).push(r.slot);
   }
   for(const [id,slots] of Object.entries(bySet))if(slots.includes("sphere")&&slots.includes("rope")){
-    const set=config.sets.find(s=>s.id===id);for(const bonus of set?.bonuses??[])result[bonus.stat]=(result[bonus.stat]??0)+number(bonus.value);
+    const set=config.sets.find(s=>s.id===id);for(const bonus of set?.bonuses??[]){const key=canonicalStat(bonus.stat);result[key]=(result[key]??0)+number(bonus.value)}
   }
   return result;
 }

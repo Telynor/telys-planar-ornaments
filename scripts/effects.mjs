@@ -27,19 +27,19 @@ function subspaceWearers(combat){
 export function dynamicStats(actor,config){
  const result={},add=(k,v)=>{result[k]=(result[k]??0)+v};const sets=activeSets(actor),walk=number(actor.system?.attributes?.movement?.walk);
  const manual=actor.getFlag?.('telys-star-rail-ultimates','planarCritAdjustment')??{};
- const rate=Math.max(-95,Math.min(95,number(manual.rate))),dice=Math.max(-20,Math.min(20,Math.trunc(number(manual.dice))));
+ const rate=Math.max(-95,Math.min(95,number(manual.rate))),bonus=Math.max(-20,Math.min(20,Math.trunc(number(manual.bonus??manual.dice))));
  if(rate){add('critRate',rate);add('critRange',Math.trunc(rate/5))}
- if(dice)add('critDamageDice',dice);
+ if(bonus)add('critDamageBonus',bonus);
  if(sets.has('301')&&walk>=35)add('str',1);
  if(sets.has('303'))add('str',1);
  if(sets.has('304')&&number(actor._planarBonuses?.effectHit)>=2)add('dex',1);
  if(sets.has('307')&&walk>=45)add('breakEffect',1);
  if(sets.has('314')&&allyActors(actor).some(other=>other.id!==actor.id&&hsr(other).pathId&&hsr(other).pathId===hsr(actor).pathId))add('critRange',1);
- if(sets.has('327')&&allyActors(actor).some(other=>other.id!==actor.id&&other.getFlag?.(ID,'trailblazeCompanion')))add('critDamageDice',2);
- if(sets.has('319')&&number(actor.system?.attributes?.hp?.max)>=60)add('critDamageDice',1);
+ if(sets.has('327')&&allyActors(actor).some(other=>other.id!==actor.id&&other.getFlag?.(ID,'trailblazeCompanion')))add('critDamageBonus',2);
+ if(sets.has('319')&&number(actor.system?.attributes?.hp?.max)>=60)add('critDamageBonus',1);
  if(sets.has('320')&&walk>=40)add('healing',walk>=55?2:1);
- if(sets.has('318')&&summoned(actor))add('critDamageDice',2);
- if(sets.has('325')&&game.combat?.started&&game.modules.get('telys-star-rail-ultimates')?.active){const punchline=number(game.settings.get('telys-star-rail-ultimates','punchline'));if(punchline>=4)add('critDamageDice',punchline>=8?2:1)}
+ if(sets.has('318')&&summoned(actor))add('critDamageBonus',2);
+ if(sets.has('325')&&game.combat?.started&&game.modules.get('telys-star-rail-ultimates')?.active){const punchline=number(game.settings.get('telys-star-rail-ultimates','punchline'));if(punchline>=4)add('critDamageBonus',punchline>=8?2:1)}
  if(sets.has('328')){const max=number(hsr(actor).max);if(max>=59)add('damageFlat',2);else if(max>=41)add('damageFlat',1)}
  if(game.combat?.started&&game.combat.combatants.some(c=>c.actor?.id===actor.id)&&allyActors(actor).some(wearer=>subspaceWearers(game.combat).has(wearer.id)))add('breakEffect',1);
  // Party buffs never multiply the same named nonstacking set.
@@ -48,7 +48,7 @@ export function dynamicStats(actor,config){
   if(wsets.has('302')&&number(wearer.system?.attributes?.movement?.walk)>=35)add('str',1);
   if(wsets.has('317')&&!lushaka&&equippedRelics(wearer).some(i=>relic(i)?.setId==='317'&&relic(i)?.targetActorId===actor.id)){add('str',1);lushaka=true}
   if(wsets.has('323')&&summoned(wearer)&&!amphoreus){add('speed',5);amphoreus=true}
-  if(wsets.has('310')&&number(wearer._planarBonuses?.savingThrow)>=2&&!result.keelDice){add('critDamageDice',1);result.keelDice=true}
+  if(wsets.has('310')&&number(wearer._planarBonuses?.savingThrow)>=2&&!result.keelDice){add('critDamageBonus',1);result.keelDice=true}
  }
  delete result.keelDice;
  for(const [key,value] of Object.entries(temporaryStats(actor)))add(key,value);
@@ -84,12 +84,12 @@ export function firstAttackBonus(actor,critDice){
  const s=state(actor);if(s.celestialUsed)return 0;s.celestialUsed=true;return 3;
 }
 export function temporaryStats(actor){if(!game.combat?.started)return {};const s=state(actor),sets=activeSets(actor),out={};
- if(sets.has('313')&&s.sigoniaTurns>0&&s.sigonia)out.critDamageDice=s.sigonia>=2?2:1;
- if(sets.has('315')&&s.merit>=5)out.critDamageDice=(out.critDamageDice??0)+1;
- if(sets.has('324')&&s.tengokuTurns>0)out.critDamageDice=(out.critDamageDice??0)+2;
+ if(sets.has('313')&&s.sigoniaTurns>0&&s.sigonia)out.critDamageBonus=s.sigonia>=2?2:1;
+ if(sets.has('315')&&s.merit>=5)out.critDamageBonus=(out.critDamageBonus??0)+1;
+ if(sets.has('324')&&s.tengokuTurns>0)out.critDamageBonus=(out.critDamageBonus??0)+2;
  if(sets.has('316')&&s.fireTurns>0)out.breakEffect=2;
  if(sets.has('326')&&s.cityTurns>0)out.str=1;
- if(s.cityParty)out.critDamageDice=(out.critDamageDice??0)+1;
+ if(s.cityParty)out.critDamageBonus=(out.critDamageBonus??0)+1;
  return out;
 }
 export function registerConditionHooks(){

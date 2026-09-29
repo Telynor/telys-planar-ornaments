@@ -3,10 +3,10 @@ import {CANONICAL_SETS} from "./catalog.mjs";
 import {visualHtml,layoutFor,pieceStyle,applyLayoutToAll} from "./visuals.mjs";
 import {dynamicStats,registerConditionHooks,firstAttackBonus} from './effects.mjs';
 import {storedRelics,asItem,ownerOf,equippedRelics,allItems,mergeLegacyRelics} from './inventory.mjs';
-import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,generateCustom,customSubstatSlots,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs} from "./core.mjs";
+import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,generateCustom,customSubstatSlots,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs,canonicalStat} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
-const config=()=>{const saved=clone(game.settings.get(ID,"config"));const merged=foundry.utils.mergeObject(clone(DEFAULT_CONFIG),saved,{inplace:false});const customized=new Map(merged.sets.map(s=>[s.id,s]));merged.sets=[...CANONICAL_SETS.map(s=>customized.get(s.id)??clone(s)),...merged.sets.filter(s=>!CANONICAL_SETS.some(c=>c.id===s.id))];return merged};
+const config=()=>{const saved=clone(game.settings.get(ID,"config"));const merged=foundry.utils.mergeObject(clone(DEFAULT_CONFIG),saved,{inplace:false});const customized=new Map(merged.sets.map(s=>[s.id,s]));merged.sets=[...CANONICAL_SETS.map(s=>customized.get(s.id)??clone(s)),...merged.sets.filter(s=>!CANONICAL_SETS.some(c=>c.id===s.id))];for(const set of merged.sets)for(const bonus of set.bonuses??[])bonus.stat=canonicalStat(bonus.stat);if(saved?.sub?.critDamageDice&&!saved?.sub?.critDamageBonus)merged.sub.critDamageBonus=saved.sub.critDamageDice;return merged};
 export function sheetCriticalThreshold(actor){
   const thresholds=[];
   const collect=value=>{const threshold=Number(value);if(Number.isInteger(threshold)&&threshold>=2&&threshold<=20)thresholds.push(threshold)};
@@ -25,7 +25,7 @@ export function criticalSnapshot(actor,baseThreshold=sheetCriticalThreshold(acto
   const automatic=criticalThreshold(base,bonus),manual=Number(actor?.getFlag?.(HSR_ID,'planarCritAdjustment')?.threshold);
   const threshold=Number.isInteger(manual)&&manual>=2&&manual<=20?manual:automatic;
   const adjustedBonuses={...relicBonuses};for(const [key,value] of Object.entries(dynamic))adjustedBonuses[key]=(adjustedBonuses[key]??0)+value;
-  return {base,bonus,automatic,threshold,critDice:Math.max(0,Math.floor(number(relicBonuses.critDamageDice)+number(dynamic.critDamageDice))),adjustedBonuses};
+  return {base,bonus,automatic,threshold,critDamageBonus:Math.max(0,Math.floor(number(relicBonuses.critDamageBonus)+number(dynamic.critDamageBonus))),adjustedBonuses};
 }
 const relic=i=>i.getFlag(ID,"relic");
 const editable=a=>game.user.isGM||a?.testUserPermission(game.user,"OWNER");
@@ -562,7 +562,7 @@ Hooks.once("ready",async()=>{
     const actor=rollConfig.subject?.actor;
     if(!actor||!rollConfig.rolls?.[0])return;
     const opts=rollConfig.rolls[0].options??={},base=rollConfig.subject.criticalThreshold??opts.criticalSuccess??sheetCriticalThreshold(actor);
-    const snapshot=criticalSnapshot(actor,base),extra=firstAttackBonus(actor,snapshot.critDice);
+    const snapshot=criticalSnapshot(actor,base),extra=firstAttackBonus(actor,snapshot.critDamageBonus);
     const hasOverride=Number.isInteger(Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold))&&Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold)>=2&&Number(actor.getFlag(HSR_ID,'planarCritAdjustment')?.threshold)<=20;
     if(snapshot.bonus+extra<=0&&!hasOverride)return;
     opts.criticalSuccess=hasOverride?snapshot.threshold:criticalThreshold(base,snapshot.bonus+extra);

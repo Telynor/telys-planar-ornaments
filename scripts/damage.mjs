@@ -54,24 +54,23 @@ export function registerDamageHooks(getConfig){
     }
     typed.push(...conditionalDamage(workflow.actor,workflow));
     const owner=summonerFor(workflow.actor);if(owner&&activeSets(owner).has('321'))typed.push(...conditionalDamage(owner,workflow).filter(e=>e.label==='Arcadia'));
-    const ownerDice=owner&&activeSets(owner).has('319')&&number(owner.system?.attributes?.hp?.max)>=60?1:0;
-    const critDice=Math.max(0,Math.floor(number(bonuses(allItems(workflow.actor),cfg).critDamageDice)+number(dynamicStats(workflow.actor,cfg).critDamageDice)+ownerDice));
+    const ownerBonus=owner&&activeSets(owner).has('319')&&number(owner.system?.attributes?.hp?.max)>=60?1:0;
+    const critBonus=Math.max(0,Math.floor(number(bonuses(allItems(workflow.actor),cfg).critDamageBonus)+number(dynamicStats(workflow.actor,cfg).critDamageBonus)+ownerBonus));
     const isCrit=Boolean(workflow.isCritical||workflow.attackRoll?.isCritical);
-    const die=roll.terms?.find(t=>Number.isInteger(t.faces)&&t.faces>=2)?.faces;
-    if(!effects.length&&!typed.length&&!(isCrit&&critDice&&die))return;
+    if(!effects.length&&!typed.length&&!(isCrit&&critBonus))return;
     processed.add(workflow);
     const details=damageBreakdown(roll.total,effects),extra=details.total-details.base;
-    if(extra<=0&&!typed.length&&!(isCrit&&critDice&&die))return;
+    if(extra<=0&&!typed.length&&!(isCrit&&critBonus))return;
     try{
       const api=globalThis.MidiQOL;
       if(typeof api?.addRollTo!=='function'||typeof workflow.setDamageRoll!=='function')throw Error('Midi-QOL evaluated roll modifier API unavailable.');
       const parts=effects.map(e=>`${Math.floor(details.base*e.rate/100)}[${e.label.replace(/[\[\]]/g,'')}]`).filter(s=>!s.startsWith('0['));
       for(const bonus of typed)parts.push(`${bonus.amount}[${bonus.type}]`);
-      if(isCrit&&critDice&&die)parts.push(`${critDice}d${die}[${roll.options?.type||'untyped'}]`);
+      if(isCrit&&critBonus)parts.push(`${critBonus}[${roll.options?.type||'untyped'}]`);
       const added=await new Roll(parts.join(' + ')).evaluate();
       const combined=api.addRollTo(roll,added);
       await workflow.setDamageRoll(combined);
-      await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor:workflow.actor}),content:`${breakdownHtml(workflow.actor,details)}${typed.map(x=>`<p>${escape(x.label)}: +${x.amount} ${escape(x.type)}</p>`).join('')}${isCrit&&critDice&&die?`<p>Planar critical damage: +${critDice}d${die}</p>`:''}`,flags:{[ID]:{breakdown:details}}});
+      await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor:workflow.actor}),content:`${breakdownHtml(workflow.actor,details)}${typed.map(x=>`<p>${escape(x.label)}: +${x.amount} ${escape(x.type)}</p>`).join('')}${isCrit&&critBonus?`<p>Planar critical damage bonus: +${critBonus}</p>`:''}`,flags:{[ID]:{breakdown:details}}});
     }catch(error){processed.delete(workflow);console.error(`${ID} | Damage modifier failed`,error);ui.notifications.error('Planar damage modifier could not be applied; original damage remains.');}
   });
 }
