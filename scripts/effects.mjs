@@ -91,7 +91,7 @@ export function temporaryStats(actor){if(!game.combat?.started)return {};const s
  return out;
 }
 export function registerConditionHooks(){
- const refresh=()=>{for(const actor of game.actors)if(actor.type==='character')actor.prepareData()};
+ const refresh=()=>{for(const actor of game.actors)if(actor.type==='character')actor.reset()};
  const firstJoyTurn=async combat=>{
   if(!game.user.isGM||game.users.filter(user=>user.isGM&&user.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id!==game.user.id||!combat?.started)return;
   const combatant=combat.combatant,actor=combatant?.actor;

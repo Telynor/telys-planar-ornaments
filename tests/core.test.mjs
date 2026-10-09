@@ -118,13 +118,13 @@ test('Subspace Break Effect is nonstacking and only reaches combat allies at 45 
  const make=(id,walk,sets)=>({id,type:'character',items:sets.flatMap(set=>[piece(set,'sphere'),piece(set,'rope')]),system:{attributes:{movement:{walk},hp:{value:10,max:10}}},getFlag:()=>null});
  const wearer=make('wearer',45,['329']),other=make('other',30,[]),second=make('second',45,['329']),enemy=make('enemy',30,[]);
  const combatants=[wearer,other,second,enemy].map(actor=>({actor,token:{disposition:actor===enemy?-1:1}}));
- const previous=globalThis.game;globalThis.game={actors:[wearer,other,second,enemy],combat:{started:true,combatants}};
+ const previous=globalThis.game;globalThis.game={actors:[wearer,other,second,enemy],combat:{id:'subspace-test',started:true,combatants}};
  try{assert.equal(dynamicStats(other,{}).breakEffect,1);assert.equal(dynamicStats(wearer,{}).breakEffect,1);assert.equal(dynamicStats(enemy,{}).breakEffect,undefined);wearer.system.attributes.movement.walk=40;second.system.attributes.movement.walk=40;assert.equal(dynamicStats(other,{}).breakEffect,1)}finally{globalThis.game=previous}
 });
 test('Moment of Joy sets Punchline to four and advances on the wearer’s first combat turn once',async()=>{
  const calls=[],handlers=new Map(),previousGame=globalThis.game,previousHooks=globalThis.Hooks;
  const piece=slot=>({flags:{[ID]:{relic:{setId:'330',slot,equipped:true}}}});
- const actor={id:'joy',type:'character',items:[piece('sphere'),piece('rope')],prepareData:()=>{}};
+ const actor={id:'joy',type:'character',items:[piece('sphere'),piece('rope')],reset:()=>{}};
  const combatant={id:'turn1',actor,getFlag:()=>combatant.triggered,setFlag:async()=>{combatant.triggered=true}};
  const combat={id:'combat1',started:true,round:1,turn:0,combatants:[combatant],combatant};
  const api={setPunchline:async n=>calls.push(['punchline',n]),insertActionAdvanceTurn:async id=>calls.push(['advance',id])};
@@ -132,6 +132,24 @@ test('Moment of Joy sets Punchline to four and advances on the wearer’s first 
  globalThis.Hooks={on:(name,fn)=>handlers.set(name,fn)};
  try{registerConditionHooks();await handlers.get('updateCombat')(combat,{turn:0});await handlers.get('updateCombat')(combat,{turn:0});assert.deepEqual(calls,[['punchline',4],['advance','turn1']])}
  finally{globalThis.game=previousGame;globalThis.Hooks=previousHooks}
+});
+test('Punchline and turn refreshes reset the prepared actor model before rebuilding senses',async()=>{
+ const handlers=new Map(),previousGame=globalThis.game,previousHooks=globalThis.Hooks;
+ let resets=0;
+ const actor={id:'refresh',type:'character',items:[],system:{attributes:{senses:{}}},getFlag:()=>null,
+  prepareData(){Object.defineProperty(this.system.attributes.senses,'darkvision',{get:()=>60,configurable:false})},
+  reset(){resets++;this.system={attributes:{senses:{}}};this.prepareData()}};
+ actor.prepareData();
+ const combatant={id:'refresh-turn',actor,getFlag:()=>null},combat={id:'refresh-combat',started:true,round:1,combatants:[combatant],combatant};
+ globalThis.game={user:{id:'gm',isGM:true},users:[{id:'gm',isGM:true,active:true}],actors:[actor],combat,settings:{get:()=>[]},modules:{get:()=>({active:false})}};
+ globalThis.Hooks={on:(name,fn)=>handlers.set(name,fn)};
+ try{
+  registerConditionHooks();
+  handlers.get('tsruPunchlineChanged')(4);
+  await handlers.get('updateCombat')(combat,{turn:0});
+  combat.round=2;await handlers.get('updateCombat')(combat,{round:2});
+  assert.equal(resets,3);assert.equal(actor.system.attributes.senses.darkvision,60);
+ }finally{globalThis.game=previousGame;globalThis.Hooks=previousHooks}
 });
 test('set projection uses per-set positions and shows matched status',()=>{
  const set={...CANONICAL_SETS[0],layout:{rope:{x:35,y:70,scale:2}}};

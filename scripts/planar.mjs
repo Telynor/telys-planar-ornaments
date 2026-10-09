@@ -127,7 +127,7 @@ class PlanarWindow extends Application{
     html.find('.tp-relic-filters select').on('change',filter);
     html.find('.tp-card').on('click keydown',e=>{if(e.type==='keydown'&&!['Enter',' '].includes(e.key))return;if(e.target.closest('button,select,input,details,label'))return;this.selectedRelicId=e.currentTarget.dataset.item;html.find('.tp-card').removeClass('tp-selected');e.currentTarget.classList.add('tp-selected')});
     html.find("[data-preview-set]").on("change",e=>{this.selectedSetId=e.currentTarget.value;this.render(false)});
-    html.find("[data-trailblaze]").on("change",async e=>{if(!game.user.isGM)return;const actor=selectActor(this.actorId);if(actor){await actor.setFlag(ID,"trailblazeCompanion",e.currentTarget.checked);for(const a of game.actors)if(a.type==="character")a.prepareData()}});
+    html.find("[data-trailblaze]").on("change",async e=>{if(!game.user.isGM)return;const actor=selectActor(this.actorId);if(actor){await actor.setFlag(ID,"trailblazeCompanion",e.currentTarget.checked);for(const a of game.actors)if(a.type==="character")a.reset()}});
     html.find("[data-lushaka-target]").on("change",e=>send("target",{actorId:this.actorId,itemId:e.currentTarget.closest("[data-item]").dataset.item,targetActorId:e.currentTarget.value}));
     html.find("[data-op]").on("click",async e=>{const op=e.currentTarget.dataset.op,a=selectActor(this.actorId);
       if(op==="settings")return new ConfigWindow().render(true);
@@ -583,14 +583,14 @@ Hooks.once("ready",async()=>{
   Hooks.on("renderActorSheet",injectSheet);
   Hooks.on('renderCharacterActorSheet',injectSheet);
   Hooks.on('renderActorSheetV2',injectSheet);
-  Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.prepareData();if(game.user.isGM){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
+  Hooks.on('updateSetting',setting=>{if(setting.key!==`${ID}.relics`)return;for(const actor of game.actors)if(actor.type==='character'){actor.reset();if(game.user.isGM){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}if(actor.sheet?.rendered)actor.sheet.render(false)}window.TelysPlanar?.app?.render(false)});
   if(game.user.isGM)for(const actor of game.actors){void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error));void syncPlanarStats(actor).catch(error=>console.error(`${ID} | Planar stat sync`,error))}
   for(const event of ["createItem","updateItem","deleteItem"])Hooks.on(event,item=>{if(item.parent?.type==="character")void syncHsrBonuses(item.parent).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
   Hooks.on("updateActor",(actor,change)=>{
     if(foundry.utils.hasProperty(foundry.utils.expandObject(change),`flags.${HSR_ID}.combatStatBuffs`)||Object.keys(foundry.utils.expandObject(change)?.flags?.[HSR_ID]??{}).some(key=>key.includes('combatStatBuffs'))){void syncPlanarStats(actor);void syncHsrBonuses(actor);}
 if(foundry.utils.hasProperty(foundry.utils.expandObject(change),`flags.${HSR_ID}.ultimate`))void syncHsrBonuses(actor).catch(error=>console.error(`${ID} | HSR bonus sync`,error))});
   for(const event of ["createItem","updateItem","deleteItem"])Hooks.on(event,item=>{if(item.parent?.type!=="character"||!item.getFlag?.(ID,"relic"))return;
-    for(const actor of game.actors)if(actor.type==="character"&&actor.id!==item.parent.id)actor.prepareData();
+    for(const actor of game.actors)if(actor.type==="character"&&actor.id!==item.parent.id)actor.reset();
   });
   ui.notifications.info("Planar Ornaments ready.");
 });
