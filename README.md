@@ -19,3 +19,9 @@ The GM's custom set builder adds two-piece bonuses by selecting a substat and a 
 Relic and set icon PNGs were obtained from [Mar-7th/StarRailRes](https://github.com/Mar-7th/StarRailRes), which distributes the resource archive under AGPL-3.0. Original Honkai: Star Rail artwork and character designs belong to their respective rights holders. The module is an unofficial fan project.
 
 The display background uses only decorative rings. Sphere and Link Rope renders are independent images that the GM can position and scale in the Set Display Designer; no relic image is baked into the background.
+
+## Compact Actor sheet controls (1.0.16)
+
+Planar Relics now uses a small nodes icon next to the Ultimates Toughness, Multitype and Boss controls. On PC sheets it opens that character’s equipment, upgrades and set details; on NPC sheets the GM icon opens global set/currency/material settings. The PC Planar tab remains available on sheets that support tabs. The Original/Buffed stats toggle is also a compact header icon with a descriptive tooltip.
+
+Actor configuration is only added to actual Actor documents. Spell Items and Summon/other activity windows no longer acquire a large Planar Relics banner from their owner Actor getter. The shared header controls stay inside the sheet and hide when minimized.

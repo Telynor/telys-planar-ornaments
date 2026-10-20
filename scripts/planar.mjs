@@ -1,4 +1,5 @@
 import {registerDamageHooks} from "./damage.mjs";
+import {planarSheetActor,injectPlanarHeader} from "./sheet-controls.mjs";
 import {CANONICAL_SETS} from "./catalog.mjs";
 import {visualHtml,layoutFor,pieceStyle,applyLayoutToAll} from "./visuals.mjs";
 import {dynamicStats,registerConditionHooks,firstAttackBonus} from './effects.mjs';
@@ -430,9 +431,8 @@ function injectPlanarSheetTab(app,root,actor){
   const nav=root.querySelector('nav.tabs[data-group="primary"], nav.sheet-tabs[data-group="primary"], .tabs-right nav.tabs, nav.tabs, [role="tablist"]');
   const body=root.querySelector('.tab-body, .sheet-body, [data-application-part="body"], .sheet-content, .tab-content, .sheet-main');
   if(!nav||!body){
-    const header=root.querySelector('.window-header, .sheet-header, header');if(!header)return;
-    const button=document.createElement('button');button.type='button';button.className='tp-sheet-tab';button.textContent='Planar Relics';
-    button.addEventListener('click',event=>{event.preventDefault();open(actor.id)});header.append(button);return;
+    // The compact header icon already opens this Actor's relic collection.
+    return;
   }
   const group=nav.dataset.group||nav.querySelector('[data-group]')?.dataset.group||'primary';
   const tab=document.createElement('a');tab.className='item control tp-sheet-tab';tab.dataset.action='tab';tab.dataset.tab='telys-planar';tab.dataset.group=group;tab.setAttribute('role','tab');tab.setAttribute('aria-label','Planar Relics');tab.title='Planar Relics';tab.innerHTML='<i class="fas fa-circle-nodes" aria-hidden="true"></i>';
@@ -484,13 +484,15 @@ function injectPlanarSheetTab(app,root,actor){
   observer.observe(nav,{subtree:true,attributes:true,attributeFilter:['class','aria-selected']});
   if(planarSheetOpen.get(app))activate();else deactivate();
 }
-function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.documentName!=='Actor'||actor.type!=="character")return;
+function injectSheet(app,html){const actor=planarSheetActor(app);if(!actor||!["character","npc"].includes(actor.type))return;
   const root=sheetRoot(app,html);if(!root)return;
   const frame=root.closest('.application, .window-app')??root;
+  const controls=injectPlanarHeader(app,root,actor,{openActor:open,openConfig:()=>new ConfigWindow().render(true)});
+  if(actor.type!=="character")return;
   injectPlanarSheetTab(app,root,actor);
   if(frame.querySelector('.tp-ability-toggle'))return;
   const fields=Object.fromEntries([...ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]),['system.attributes.movement.walk',foundry.utils.getProperty(actor._source,'system.attributes.movement.walk')],['system.attributes.ac.bonus',foundry.utils.getProperty(actor._source,'system.attributes.ac.bonus')]]);
-  const holder=document.createElement("button");holder.type="button";holder.className="tp-ability-toggle";
+  const holder=document.createElement("button");holder.type="button";holder.className="header-control icon tsru-actor-header-control tp-ability-toggle";holder.dataset.actorControl="planar-stats";holder.dataset.actorControlOrder="45";
   const rows=[];
   for(const [name,base] of Object.entries(fields)){
     const input=[...root.querySelectorAll("input[name]")].find(el=>el.name===name);
@@ -536,7 +538,8 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
   }
   let boosted=sheetModes.get(actor)==="boosted";
   const render=()=>{
-    holder.textContent=boosted?"Buffed stats · view only":"Original stats · editable";
+    holder.innerHTML='<i class="fas '+(boosted?'fa-chart-line':'fa-pencil')+'" aria-hidden="true"></i>';
+    holder.setAttribute("aria-label",boosted?"Buffed stats — switch to original stats":"Original stats — switch to buffed stats");
     holder.setAttribute("aria-pressed",String(boosted));
     holder.title=boosted?"Show original scores to edit them":"Show scores after planar buffs";
     for(const row of rows){row.input.value=boosted?row.buffed:row.base;row.input.readOnly=boosted||row.locked;row.input.disabled=boosted||row.disabled;row.input.classList.toggle("tp-buffed-field",boosted)}
@@ -548,7 +551,8 @@ function injectSheet(app,html){const actor=app.actor??app.document;if(actor?.doc
     boosted=!boosted;sheetModes.set(actor,boosted?"boosted":"original");render();
   });
   render();
-  header.append(holder);
+  (controls??header.querySelector('[data-tsru-actor-controls]')??header).append(holder);
+  if(controls)for(const node of [...controls.children].sort((a,b)=>Number(a.dataset.actorControlOrder??99)-Number(b.dataset.actorControlOrder??99)))controls.append(node);
 }
 export function open(actorId){const app=window.TelysPlanar.app??new PlanarWindow();window.TelysPlanar.app=app;app.actorId=actorId||app.actorId||token()?.id;app.render(true);return app}
 async function migrateLegacyRelics(){
