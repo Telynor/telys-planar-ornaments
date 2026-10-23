@@ -1,3 +1,4 @@
+import {systemPath,effectSystem,effectChanges} from './system-compat.mjs';
 import {registerDamageHooks} from "./damage.mjs";
 import {planarSheetActor,injectPlanarHeader} from "./sheet-controls.mjs";
 import {CANONICAL_SETS} from "./catalog.mjs";
@@ -233,9 +234,9 @@ function syncPlanarStats(actor){
 }
 export function planarStatChanges(b,cfg,actor){
   const changes=[],mode=CONST.ACTIVE_EFFECT_MODES.ADD;
-  const add=(key,value)=>{if(Number.isFinite(value)&&value!==0)changes.push({key,mode,value:String(value),priority:30})};
+  const add=(key,value)=>{if(Number.isFinite(value)&&value!==0)changes.push({key:systemPath(key),mode,value:String(value),priority:30})};
   for(const key of ABILITIES)add(`system.abilities.${key}.value`,number(b[key]));
-  for(const [stat,paths] of Object.entries({atkPct:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),atkFlat:['mwak','rwak','msak','rsak','spell'].map(k=>`system.bonuses.${k}.attack`),hpPct:['system.attributes.hp.bonuses.overall'],hpFlat:['system.attributes.hp.bonuses.overall']}))
+  for(const [stat,paths] of Object.entries({atkPct:['mwak','rwak','msak','rsak'].map(k=>`system.bonuses.${k}.attack`),atkFlat:['mwak','rwak','msak','rsak'].map(k=>`system.bonuses.${k}.attack`),hpPct:['system.attributes.hp.bonuses.overall'],hpFlat:['system.attributes.hp.bonuses.overall']}))
     for(const path of paths)add(path,Math.floor(number(b[stat])));
   const acBonus=Math.floor(number(b.defPct)+number(b.defFlat));
   const originalAc=foundry.utils.getProperty(actor?._source,'system.attributes.ac.bonus');
@@ -243,11 +244,12 @@ export function planarStatChanges(b,cfg,actor){
     if(originalAc==null||Number.isFinite(Number(originalAc)))changes.push({key:'system.attributes.ac.bonus',mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(number(originalAc)+acBonus),priority:30});
     else add('system.attributes.ac.bonus',acBonus);
   }
-  const originalWalk=number(foundry.utils.getProperty(actor?._source,'system.attributes.movement.walk'));
+  const walkPath=systemPath('system.attributes.movement.walk');
+  const originalWalk=number(foundry.utils.getProperty(actor?._source,walkPath));
   const speedBonus=cfg.mapping.speed==='system.attributes.movement.walk'?number(b.speed)*number(cfg.flat?.speed,1):0;
   const speedPercent=cfg.mapping.speedPct==='system.attributes.movement.walk'?number(b.speedPct)*number(cfg.flat?.speedPct,1):0;
   const movementBonus=speedBonus+Math.floor(originalWalk*speedPercent/100);
-  if(movementBonus)changes.push({key:'system.attributes.movement.walk',mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(originalWalk+movementBonus),priority:30});
+  if(movementBonus)changes.push({key:walkPath,mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(originalWalk+movementBonus),priority:30});
   for(const [stat,value] of Object.entries(b)){
     if([...ABILITIES,'atkPct','atkFlat','hpPct','hpFlat','defPct','defFlat','breakEffect','energyRegen'].includes(stat))continue;
     if(['speed','speedPct'].includes(stat)&&cfg.mapping[stat]==='system.attributes.movement.walk')continue;
@@ -264,16 +266,16 @@ function standardStatEffects(actor){
   const cfg=config(),b=bonuses(allItems(actor),cfg);for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
   const changes=planarStatChanges(b,cfg,actor),hsrChanges=[];
   for(const [stat,field] of [['breakEffect','breakEffectScore'],['energyRegen','regenScore']]){const boost=Math.floor(number(b[stat]));if(boost)hsrChanges.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,number(foundry.utils.getProperty(actor._source,`flags.${HSR_ID}.ultimate.${field}`),10)+boost))),priority:50});}
-  return [{name:'Standard planar bonuses',changes},{name:'Standard Star Rail bonuses',changes:hsrChanges}];
+  return [{name:'Standard planar bonuses',system:effectSystem(changes)},{name:'Standard Star Rail bonuses',system:effectSystem(hsrChanges)}];
 }
-async function applyPlanarStatEffect(actor){
+export async function applyPlanarStatEffect(actor){
   if(!game.user.isGM||actor?.type!=='character')return;
   const cfg=config(),b=bonuses(allItems(actor),cfg);
   for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
   const changes=planarStatChanges(b,cfg,actor),existing=actor.effects.find(e=>e.getFlag(ID,'statBonus'));
   if(!changes.length){if(existing)await existing.delete();return}
-  if(existing){if(JSON.stringify(existing.changes)!==JSON.stringify(changes))await existing.update({changes});return}
-  await actor.createEmbeddedDocuments('ActiveEffect',[{name:'Planar ornament bonuses',img:'icons/magic/light/orb-sphere-gold.webp',changes,disabled:false,flags:{[ID]:{statBonus:true}}}]);
+  if(existing){if(JSON.stringify(effectChanges(existing))!==JSON.stringify(changes))await existing.update({'system.changes':effectSystem(changes).changes});return}
+  await actor.createEmbeddedDocuments('ActiveEffect',[{name:'Planar ornament bonuses',img:'icons/magic/light/orb-sphere-gold.webp',system:effectSystem(changes),disabled:false,flags:{[ID]:{statBonus:true}}}]);
 }
 function syncHsrBonuses(actor){
   const previous=hsrSyncs.get(actor.id)??Promise.resolve();
@@ -281,7 +283,7 @@ function syncHsrBonuses(actor){
   void next.finally(()=>{if(hsrSyncs.get(actor.id)===next)hsrSyncs.delete(actor.id)}).catch(()=>{});
   return next;
 }
-async function applyHsrBonuses(actor){
+export async function applyHsrBonuses(actor){
   if(!game.user.isGM||actor?.type!=="character")return;
   const b=bonuses(allItems(actor),config()),changes=[];for(const [key,value] of Object.entries(dynamicStats(actor,config())))b[key]=(b[key]??0)+value;
   for(const [stat,field] of [["breakEffect","breakEffectScore"],["energyRegen","regenScore"]]){
@@ -291,8 +293,8 @@ async function applyHsrBonuses(actor){
   }
   const existing=actor.effects.find(e=>e.getFlag(ID,"hsrBonus"));
   if(!changes.length){if(existing)await existing.delete();return}
-  if(existing){if(JSON.stringify(existing.changes)!==JSON.stringify(changes))await existing.update({changes});return}
-  await actor.createEmbeddedDocuments("ActiveEffect",[{name:HSR_EFFECT_NAME,img:"icons/magic/light/orb-sphere-gold.webp",changes,disabled:false,flags:{[ID]:{hsrBonus:true}}}]);
+  if(existing){if(JSON.stringify(effectChanges(existing))!==JSON.stringify(changes))await existing.update({'system.changes':effectSystem(changes).changes});return}
+  await actor.createEmbeddedDocuments("ActiveEffect",[{name:HSR_EFFECT_NAME,img:"icons/magic/light/orb-sphere-gold.webp",system:effectSystem(changes),disabled:false,flags:{[ID]:{hsrBonus:true}}}]);
 }
 function applyBonuses(model){const actor=model.parent;if(!actor||actor.type!=="character")return;
   const cfg=config(),b=bonuses(allItems(actor),cfg),scores={},fields={};
@@ -491,7 +493,7 @@ function injectSheet(app,html){const actor=planarSheetActor(app);if(!actor||!["c
   if(actor.type!=="character")return;
   injectPlanarSheetTab(app,root,actor);
   if(frame.querySelector('.tp-ability-toggle'))return;
-  const fields=Object.fromEntries([...ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]),['system.attributes.movement.walk',foundry.utils.getProperty(actor._source,'system.attributes.movement.walk')],['system.attributes.ac.bonus',foundry.utils.getProperty(actor._source,'system.attributes.ac.bonus')]]);
+  const fields=Object.fromEntries([...ABILITIES.map(key=>[`system.abilities.${key}.value`,foundry.utils.getProperty(actor._source,`system.abilities.${key}.value`)]),[systemPath('system.attributes.movement.walk'),foundry.utils.getProperty(actor._source,systemPath('system.attributes.movement.walk'))],['system.attributes.ac.bonus',foundry.utils.getProperty(actor._source,'system.attributes.ac.bonus')]]);
   const holder=document.createElement("button");holder.type="button";holder.className="header-control icon tsru-actor-header-control tp-ability-toggle";holder.dataset.actorControl="planar-stats";holder.dataset.actorControlOrder="45";
   const rows=[];
   for(const [name,base] of Object.entries(fields)){
@@ -521,7 +523,7 @@ function injectSheet(app,html){const actor=planarSheetActor(app);if(!actor||!["c
     const buffed=Number(value.textContent.trim()),base=fields[`system.abilities.${key}.value`];
     const flat=number(actor._planarBonuses?.savingThrow,0);
     const planar=actor.effects.find(effect=>effect.getFlag(ID,'statBonus'));
-    const flatFromEffect=planar?.changes?.filter(change=>change.key===`system.abilities.${key}.bonuses.save`).reduce((sum,change)=>sum+number(change.value),0)??flat;
+    const flatFromEffect=effectChanges(planar).filter(change=>[systemPath(`system.abilities.${key}.bonuses.save`),`system.abilities.${key}.bonuses.save`].includes(change.key)).reduce((sum,change)=>sum+number(change.value),0)??flat;
     saveRows.push({key,element:value,buffed:value.textContent,original:originalSaveTotal(buffed,base,actor.system.abilities[key]?.value,flatFromEffect)});
   }
   const saveSummary=document.createElement('div');saveSummary.className='tp-original-saves';
@@ -529,9 +531,9 @@ function injectSheet(app,html){const actor=planarSheetActor(app);if(!actor||!["c
     for(const key of ABILITIES){
       if(saveRows.some(row=>row.key===key))continue;
       const value=actor.system.abilities[key]?.save;
-      const total=typeof value==='number'?value:number(value?.total,NaN);
+      const total=typeof value==='number'?value:number(value?.value??value?.total,NaN);
       if(!Number.isFinite(total))continue;
-      const base=fields[`system.abilities.${key}.value`],flat=number(actor.effects.find(effect=>effect.getFlag(ID,'statBonus'))?.changes?.find(change=>change.key===`system.abilities.${key}.bonuses.save`)?.value);
+      const base=fields[`system.abilities.${key}.value`],flat=number(effectChanges(actor.effects.find(effect=>effect.getFlag(ID,'statBonus'))).find(change=>[systemPath(`system.abilities.${key}.bonuses.save`),`system.abilities.${key}.bonuses.save`].includes(change.key))?.value);
       const chip=document.createElement('span');chip.textContent=`${key.toUpperCase()} ${originalSaveTotal(total,base,actor.system.abilities[key]?.value,flat)>=0?'+':''}${originalSaveTotal(total,base,actor.system.abilities[key]?.value,flat)}`;saveSummary.append(chip);
     }
     if(saveSummary.childElementCount)saveArea.prepend(saveSummary);

@@ -1,5 +1,15 @@
 # Tely's Planar Ornaments
 
+## Update 1.0.17 — Midi-QOL and D&D5e 6
+
+For a D&D5e **6.0.6** world, use **Midi-QOL 14.6.0** and **DAE 14.6.0** on Foundry **14.368 or newer**. The authors publish these through the [Midi-QOL 14.6 manifest](https://gitlab.com/tposney/midi-qol/-/releases/v14.6.0/downloads/module.json) and [DAE 14.6 manifest](https://gitlab.com/tposney/dae/-/releases/v14.6.0/downloads/module.json). The catalog's Midi 14.0 line targets D&D5e 5.x; changing an HSR module cannot make that upstream version support D&D5e 6. D&D5e 5.3.3 worlds retain their Midi/DAE 14.0 integration.
+
+Planar effects now use v14 `system.changes` data and map attack/save/initiative/movement bonuses to the installed D&D5e version. Existing saved mappings are translated when effects are synchronized. Repeated synchronization ignores system-generated effect IDs and filters. Speed-based set conditions read the version 6 movement data.
+
+Damage and healing modifiers prefer Midi's awaited `setDamageRolls` API, retaining separate damage types and extra components. Legacy scalar setters remain supported. Aborted workflows do not grant completion bonuses. Use with Ultimates preview.27 and Memosprites 1.4.2 for the complete HSR integration update.
+
+Validation: 35 Node tests plus the shared Actor/NPC controls browser regression passed, including typed multi-part damage, healing, persisted effects and legacy paths. Live Foundry/Midi combat has not been executed in this workspace.
+
 Standalone Foundry VTT v14 / dnd5e 5.3.3 module for Planar Spheres and Link Ropes. Players manage the shared collection and equip relics from the **Planar Relics** character sheet tab. The HSR phone designer offers four optional actions in each button's **Opens** menu: player-facing **Planar Relics** and GM-only **Planar Relics Config**, **Generate Planar Relics**, and **Set Display Designer**. Add, place, and size those buttons in the phone designer; this module inserts none automatically. Generation adds a relic to the shared collection, with a chosen set and Sphere, Link Rope, or random piece. Configuration also remains available through `TelysPlanar.openConfig()`.
 
 Every player sees the same Planar collection. Equipped ornaments show the wearer's token at the top left, and the collection can be filtered by wearer. The equipment display defaults to the selected character's equipped set and projects only the Sphere or Link Rope that character has equipped.

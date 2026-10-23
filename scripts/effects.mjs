@@ -1,5 +1,6 @@
 import {ID,number} from './core.mjs';
 import {equippedRelics} from './inventory.mjs';
+const walk=actor=>number((actor?.system?.attributes?.movement?.speeds??actor?.system?.attributes?.movement)?.walk);
 const relic=item=>item.getFlag?.(ID,'relic')??item.flags?.[ID]?.relic;
 export function activeSets(actor){
  const pieces=new Map();for(const item of equippedRelics(actor)){const r=relic(item);if(!r?.equipped)continue;let slots=pieces.get(r.setId);if(!slots){slots=new Map();pieces.set(r.setId,slots)}slots.set(r.slot,r)}
@@ -21,21 +22,21 @@ export function allyActors(actor){
 }
 const subspaceCombatWearers=new Map();
 function subspaceWearers(combat){
- if(!subspaceCombatWearers.has(combat.id))subspaceCombatWearers.set(combat.id,new Set(combat.combatants.filter(c=>c.actor&&activeSets(c.actor).has('329')&&number(c.actor.system?.attributes?.movement?.walk)>=45).map(c=>c.actor.id)));
+ if(!subspaceCombatWearers.has(combat.id))subspaceCombatWearers.set(combat.id,new Set(combat.combatants.filter(c=>c.actor&&activeSets(c.actor).has('329')&&walk(c.actor)>=45).map(c=>c.actor.id)));
  return subspaceCombatWearers.get(combat.id);
 }
 export function dynamicStats(actor,config){
- const result={},add=(k,v)=>{result[k]=(result[k]??0)+v};const sets=activeSets(actor),walk=number(actor.system?.attributes?.movement?.walk);
+ const result={},add=(k,v)=>{result[k]=(result[k]??0)+v};const sets=activeSets(actor),walkSpeed=walk(actor);
  const combatBuffs=actor.getFlag?.('telys-star-rail-ultimates','combatStatBuffs');
  if(game.combat?.started&&combatBuffs?.combatId===game.combat.id)for(const [key,value] of Object.entries(combatBuffs.planar??{}))add(key,number(value));
- if(sets.has('301')&&walk>=35)add('str',1);
+ if(sets.has('301')&&walkSpeed>=35)add('str',1);
  if(sets.has('303'))add('str',1);
  if(sets.has('304')&&number(actor._planarBonuses?.effectHit)>=2)add('dex',1);
- if(sets.has('307')&&walk>=45)add('breakEffect',1);
+ if(sets.has('307')&&walkSpeed>=45)add('breakEffect',1);
  if(sets.has('314')&&allyActors(actor).some(other=>other.id!==actor.id&&hsr(other).pathId&&hsr(other).pathId===hsr(actor).pathId))add('critRange',1);
  if(sets.has('327')&&allyActors(actor).some(other=>other.id!==actor.id&&other.getFlag?.(ID,'trailblazeCompanion')))add('critDamageBonus',2);
  if(sets.has('319')&&number(actor.system?.attributes?.hp?.max)>=60)add('critDamageBonus',1);
- if(sets.has('320')&&walk>=40)add('healing',walk>=55?2:1);
+ if(sets.has('320')&&walkSpeed>=40)add('healing',walkSpeed>=55?2:1);
  if(sets.has('318')&&summoned(actor))add('critDamageBonus',2);
  if(sets.has('325')&&game.combat?.started&&game.modules.get('telys-star-rail-ultimates')?.active){const punchline=number(game.settings.get('telys-star-rail-ultimates','punchline'));if(punchline>=4)add('critDamageBonus',punchline>=8?2:1)}
  if(sets.has('328')){const max=number(hsr(actor).max);if(max>=59)add('damageFlat',2);else if(max>=41)add('damageFlat',1)}
@@ -43,7 +44,7 @@ export function dynamicStats(actor,config){
  // Party buffs never multiply the same named nonstacking set.
  let lushaka=false,amphoreus=false;
  for(const wearer of game.actors??[]){if(wearer.type!=='character'||wearer.id===actor.id)continue;const wsets=activeSets(wearer);
-  if(wsets.has('302')&&number(wearer.system?.attributes?.movement?.walk)>=35)add('str',1);
+  if(wsets.has('302')&&walk(wearer)>=35)add('str',1);
   if(wsets.has('317')&&!lushaka&&equippedRelics(wearer).some(i=>relic(i)?.setId==='317'&&relic(i)?.targetActorId===actor.id)){add('str',1);lushaka=true}
   if(wsets.has('323')&&summoned(wearer)&&!amphoreus){add('speed',5);amphoreus=true}
   if(wsets.has('310')&&number(wearer._planarBonuses?.savingThrow)>=2&&!result.keelDice){add('critDamageBonus',1);result.keelDice=true}
@@ -53,9 +54,9 @@ export function dynamicStats(actor,config){
  return result;
 }
 export function conditionalDamage(actor,workflow){
- const sets=activeSets(actor),speed=number(actor.system?.attributes?.movement?.walk),str=number(actor.system?.abilities?.str?.value),effects=[];
+ const sets=activeSets(actor),speed=walk(actor),str=number(actor.system?.abilities?.str?.value),effects=[];
  const add=(name,amount,type)=>{if(amount>0)effects.push({label:name,amount,type})};
- const type=workflow.damageRoll?.options?.type||'untyped';
+ const type=workflow.damageRolls?.[0]?.options?.type??workflow.damageRoll?.options?.type??'untyped';
  if(sets.has('311')&&speed>=40)add('Glamoth',speed>=50?2:1,type);
  if(sets.has('321')){const n=allyActors(actor).length||4;add('Arcadia',n>4?Math.min(4,n-4):Math.min(3,4-n),type)}
  if(sets.has('328')){const energy=number(hsr(actor).max);add('Cosmic Life Sciences Institute',energy>=59?2:energy>=41?1:0,type)}
@@ -126,8 +127,10 @@ export function registerConditionHooks(){
   if(previous!==undefined&&previous>number(value))s.skillSpent=(s.skillSpent??0)+previous-number(value);
   if(s.skillSpent>=3&&activeSets(actor).has('324')){s.tengokuTurns=3;refresh()}
  });
+ const resolved=new WeakSet();
  Hooks.on('midi-qol.RollComplete',workflow=>{
-  const actor=workflow?.actor;if(!actor||!game.combat?.started)return;
+  const actor=workflow?.actor;if(!actor||workflow.aborted||workflow.cancelled||resolved.has(workflow)||!game.combat?.started)return;
+  resolved.add(workflow);
   const s=state(actor),name=String(workflow.activity?.name??workflow.item?.name??'');
   const followUp=/follow[ -]?up/i.test(name);
   if(followUp){if(activeSets(actor).has('326'))s.cityTurns=2;

@@ -1,6 +1,7 @@
 import {ID,number,damageBreakdown,matchingElementalDamageType,elementalDamageBonus,bonuses,ELEMENT_DAMAGE_TYPES} from './core.mjs';
 import {dynamicStats,conditionalDamage,summonerFor,activeSets,hsr} from './effects.mjs';
 import {allItems,equippedRelics} from './inventory.mjs';
+import {primaryDamageRolls,applyDamageBonuses} from './midi-compat.mjs';
 const processed=new WeakSet();
 const relic=item=>item.getFlag?.(ID,'relic');
 const escape=s=>foundry.utils.escapeHTML(String(s??''));
@@ -27,18 +28,18 @@ function breakdownHtml(actor,details){
 }
 export function registerDamageHooks(getConfig){
   Hooks.on('midi-qol.DamageRollComplete',async workflow=>{
-    if(!workflow?.actor||processed.has(workflow))return;
-    const roll=workflow.damageRoll;if(!roll||!Number.isFinite(roll.total)||roll.total<=0)return;
+    if(!workflow?.actor||workflow.aborted||workflow.cancelled||processed.has(workflow))return;
+    const rolls=primaryDamageRolls(workflow),first=rolls[0];
+    const total=rolls.reduce((n,r)=>n+Math.max(0,Number(r.total)||0),0);
+    if(!first||total<=0)return;
+    const roll={total,options:first.options,terms:rolls.flatMap(r=>r.terms??[])};
     if(roll.options?.type==='healing'){
-      const owner=summonerFor(workflow.actor),ownerHealing=owner&&activeSets(owner).has('320')?(number(owner.system?.attributes?.movement?.walk)>=55?2:number(owner.system?.attributes?.movement?.walk)>=40?1:0):0;
+      const owner=summonerFor(workflow.actor),walk=number((owner?.system?.attributes?.movement?.speeds??owner?.system?.attributes?.movement)?.walk),ownerHealing=owner&&activeSets(owner).has('320')?(walk>=55?2:walk>=40?1:0):0;
       const amount=Math.max(0,Math.floor(number(bonuses(allItems(workflow.actor),getConfig()).healing)+number(dynamicStats(workflow.actor,getConfig()).healing)+ownerHealing));
       if(!amount)return;
       processed.add(workflow);
       try{
-        const api=globalThis.MidiQOL;
-        if(typeof api?.addRollTo!=='function'||typeof workflow.setDamageRoll!=='function')throw Error('Midi-QOL healing roll modifier API unavailable.');
-        const added=await new Roll(`${amount}[healing]`).evaluate();
-        await workflow.setDamageRoll(api.addRollTo(roll,added));
+        await applyDamageBonuses(workflow,[{amount,type:'healing'}]);
       }catch(error){processed.delete(workflow);console.error(`${ID} | Healing modifier failed`,error)}
       return;
     }
@@ -49,7 +50,7 @@ export function registerDamageHooks(getConfig){
     const elements=game.modules.get(hsrId)?.active?game.settings.get(hsrId,'elements'):[];
     const wearerElementId=hsr(workflow.actor).elementId;
     for(const item of equippedRelics(workflow.actor)){const r=relic(item);if(!r?.equipped||r.slot!=='sphere')continue;
-      const type=matchingElementalDamageType(r.main,wearerElementId,elements,roll);
+      const type=rolls.map(part=>matchingElementalDamageType(r.main,wearerElementId,elements,part)).find(Boolean);
       if(type)typed.push({label:`${item.name} (${r.main})`,amount:elementalDamageBonus(r),type});
     }
     const combatBuffs=workflow.actor.getFlag?.('telys-star-rail-ultimates','combatStatBuffs');
@@ -69,14 +70,10 @@ export function registerDamageHooks(getConfig){
     const details=damageBreakdown(roll.total,effects),extra=details.total-details.base;
     if(extra===0&&!typed.length&&!(isCrit&&critBonus))return;
     try{
-      const api=globalThis.MidiQOL;
-      if(typeof api?.addRollTo!=='function'||typeof workflow.setDamageRoll!=='function')throw Error('Midi-QOL evaluated roll modifier API unavailable.');
-      const parts=effects.map(e=>`${Math.floor(details.base*e.rate/100)}[${e.label.replace(/[\[\]]/g,'')}]`).filter(s=>!s.startsWith('0['));
-      for(const bonus of typed)parts.push(`${bonus.amount}[${bonus.type}]`);
-      if(isCrit&&critBonus)parts.push(`${critBonus}[${roll.options?.type||'untyped'}]`);
-      const added=await new Roll(parts.join(' + ')).evaluate();
-      const combined=api.addRollTo(roll,added);
-      await workflow.setDamageRoll(combined);
+      const additions=effects.map(e=>({amount:Math.floor(details.base*e.rate/100),type:roll.options?.type}));
+      additions.push(...typed);
+      if(isCrit&&critBonus)additions.push({amount:critBonus,type:roll.options?.type});
+      await applyDamageBonuses(workflow,additions);
       await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor:workflow.actor}),content:`${breakdownHtml(workflow.actor,details)}${typed.map(x=>`<p>${escape(x.label)}: +${x.amount} ${escape(x.type)}</p>`).join('')}${isCrit&&critBonus?`<p>Planar critical damage bonus: +${critBonus}</p>`:''}`,flags:{[ID]:{breakdown:details}}});
     }catch(error){processed.delete(workflow);console.error(`${ID} | Damage modifier failed`,error);ui.notifications.error('Planar damage modifier could not be applied; original damage remains.');}
   });
