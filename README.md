@@ -1,5 +1,13 @@
 # Tely's Planar Ornaments
 
+## Update 1.0.18 — Foundry v14 startup and designer
+
+Fixed the startup exception `You must provide a menu type that is a FormApplication or ApplicationV2 instance or subclass`. The Set Display Designer is now an ApplicationV2 with native render options, content replacement and render lifecycle handling. Existing drag, scale, set-switching, apply-to-all and save behavior is retained.
+
+Modern effect changes are read by their string type without touching deprecated numeric getters. Internal operation codes still support the existing API, while saved effects continue using v14 string types.
+
+Validation: 39 Node tests passed, including the actual init hook under a strict settings-menu type check. Chromium checks passed for designer editing, wheel resizing, set switching, defaults, saving/reopening and the shared Ultimates Actor/NPC controls. These browser checks use Foundry platform mocks; live-world validation remains pending.
+
 ## Update 1.0.17 — Midi-QOL and D&D5e 6
 
 For a D&D5e **6.0.6** world, use **Midi-QOL 14.6.0** and **DAE 14.6.0** on Foundry **14.368 or newer**. The authors publish these through the [Midi-QOL 14.6 manifest](https://gitlab.com/tposney/midi-qol/-/releases/v14.6.0/downloads/module.json) and [DAE 14.6 manifest](https://gitlab.com/tposney/dae/-/releases/v14.6.0/downloads/module.json). The catalog's Midi 14.0 line targets D&D5e 5.x; changing an HSR module cannot make that upstream version support D&D5e 6. D&D5e 5.3.3 worlds retain their Midi/DAE 14.0 integration.
@@ -10,7 +18,7 @@ Damage and healing modifiers prefer Midi's awaited `setDamageRolls` API, retaini
 
 Validation: 35 Node tests plus the shared Actor/NPC controls browser regression passed, including typed multi-part damage, healing, persisted effects and legacy paths. Live Foundry/Midi combat has not been executed in this workspace.
 
-Standalone Foundry VTT v14 / dnd5e 5.3.3 module for Planar Spheres and Link Ropes. Players manage the shared collection and equip relics from the **Planar Relics** character sheet tab. The HSR phone designer offers four optional actions in each button's **Opens** menu: player-facing **Planar Relics** and GM-only **Planar Relics Config**, **Generate Planar Relics**, and **Set Display Designer**. Add, place, and size those buttons in the phone designer; this module inserts none automatically. Generation adds a relic to the shared collection, with a chosen set and Sphere, Link Rope, or random piece. Configuration also remains available through `TelysPlanar.openConfig()`.
+Standalone Foundry VTT v14 / D&D5e 5.3.3–5.x or 6.x module for Planar Spheres and Link Ropes. Players manage the shared collection and equip relics from the **Planar Relics** character sheet tab. The HSR phone designer offers four optional actions in each button's **Opens** menu: player-facing **Planar Relics** and GM-only **Planar Relics Config**, **Generate Planar Relics**, and **Set Display Designer**. Add, place, and size those buttons in the phone designer; this module inserts none automatically. Generation adds a relic to the shared collection, with a chosen set and Sphere, Link Rope, or random piece. Configuration also remains available through `TelysPlanar.openConfig()`.
 
 Every player sees the same Planar collection. Equipped ornaments show the wearer's token at the top left, and the collection can be filtered by wearer. The equipment display defaults to the selected character's equipped set and projects only the Sphere or Link Rope that character has equipped.
 

@@ -83,7 +83,7 @@ test('equipped relic stats produce actor effect changes for scores and rolls',as
  globalThis.Application=class {};
  globalThis.Hooks={once:()=>{}};
  globalThis.CONST={ACTIVE_EFFECT_MODES:{ADD:2,OVERRIDE:5}};
- globalThis.foundry={utils:{getProperty:(object,path)=>path.split('.').reduce((value,key)=>value?.[key],object)}};
+ globalThis.foundry={applications:{api:{ApplicationV2:class{}}},utils:{getProperty:(object,path)=>path.split('.').reduce((value,key)=>value?.[key],object)}};
  const {planarStatChanges,originalSaveTotal}=await import('../scripts/planar.mjs');
  const actor={_source:{system:{attributes:{movement:{walk:30},ac:{bonus:2}}}}};
  const changes=planarStatChanges({str:2,atkPct:3,hpPct:20,defPct:4,speed:5,savingThrow:1},DEFAULT_CONFIG,actor);

@@ -13,7 +13,7 @@ export function typedChanges(changes) {
   return changes.map(c=>({key:systemPath(c.key),type:c.type??changeTypes[c.mode]??"add",value:String(c.value??""),priority:Number(c.priority??20)}));
 }
 export function effectChanges(effect) {
-  return (effect?.system?.changes??effect?.changes??[]).map(c=>({key:c.key,mode:c.mode??changeTypes.indexOf(c.type),value:String(c.value??""),priority:Number(c.priority??20)}));
+  return (effect?.system?.changes??effect?.changes??[]).map(c=>({key:c.key,mode:c.type!=null?changeTypes.indexOf(c.type):c.mode,value:String(c.value??""),priority:Number(c.priority??20)}));
 }
 export function effectSystem(changes){return {changes:typedChanges(changes)};}
 export function addAttackBonus(system,amount,{spellOnly=false}={}) {

@@ -7,7 +7,7 @@ import {dynamicStats} from '../scripts/effects.mjs';
 const get=(o,p)=>p.split('.').reduce((v,k)=>v?.[k],o);
 globalThis.Application=class{};globalThis.Hooks={once(){},on(){}};
 globalThis.CONST={ACTIVE_EFFECT_MODES:{ADD:2,OVERRIDE:5}};
-globalThis.foundry={utils:{getProperty:get,deepClone:structuredClone,mergeObject:a=>structuredClone(a)}};
+globalThis.foundry={applications:{api:{ApplicationV2:class{}}},utils:{getProperty:get,deepClone:structuredClone,mergeObject:a=>structuredClone(a)}};
 const {planarStatChanges,applyPlanarStatEffect}=await import('../scripts/planar.mjs');
 function setup(version='6.0.6'){
   const actor={id:'hero',type:'character',items:[],effects:[],getFlag:()=>null,_source:{system:{attributes:{movement:{speeds:{walk:'30'},walk:30},ac:{bonus:0}}}},system:{attributes:{movement:{speeds:{walk:40}},hp:{value:20,max:20}}}};
@@ -46,6 +46,19 @@ test('legacy effect storage and v14 effect storage can both be read for migratio
   const c={key:'system.abilities.str.value',mode:2,value:'2',priority:30};
   assert.deepEqual(effectChanges({changes:[c]}),[c]);
   assert.deepEqual(effectChanges({system:{changes:[{...c,mode:undefined,type:'add'}]}}),[c]);
+});
+test('modern changes never read Foundry\'s deprecated numeric mode getter',()=>{
+  const change={key:'system.abilities.str.value',type:'add',value:'2',priority:30};
+  Object.defineProperty(change,'mode',{get(){throw Error('deprecated numeric mode getter');}});
+  assert.deepEqual(effectChanges({system:{changes:[change]}}),[{key:change.key,mode:2,value:'2',priority:30}]);
+});
+test('planar stat generation never accesses the deprecated effect mode enum',()=>{
+  const actor=setup(),previous=globalThis.CONST;
+  globalThis.CONST={get ACTIVE_EFFECT_MODES(){throw Error('deprecated mode enum');}};
+  try{
+    const changes=planarStatChanges({str:2,atkPct:3,defPct:2,speed:5,savingThrow:1},DEFAULT_CONFIG,actor);
+    assert.ok(changes.some(change=>change.mode===2));assert.ok(changes.some(change=>change.mode===5));
+  }finally{globalThis.CONST=previous;}
 });
 class TestRoll{
   constructor(formula,_data={},options={}){this.formula=formula;this.options=options;this.total=String(formula).replace(/\[[^\]]*\]/g,'').split('+').reduce((n,p)=>n+Number(p.trim()),0);this.terms=[];}

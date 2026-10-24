@@ -15,6 +15,18 @@ jobs:
           node-version: '22'
       - name: Run regression tests
         run: node --test tests/*.test.mjs
+      - name: Check designer registration and save in Chromium
+        run: |
+          npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.64.1 jquery@3.7.1
+          npx playwright install --with-deps chromium --only-shell
+          node tests/designer-ui.cjs
+      - name: Upload designer screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: planar-designer
+          path: artifacts/planar-designer.png
+          if-no-files-found: ignore
       - name: Read version
         id: version
         run: echo "value=$(jq -r '.version' module.json)" >> "$GITHUB_OUTPUT"

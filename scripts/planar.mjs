@@ -8,6 +8,9 @@ import {storedRelics,asItem,ownerOf,equippedRelics,allItems,mergeLegacyRelics} f
 import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,generateCustom,customSubstatSlots,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs,canonicalStat} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
+// Keep the public compatibility format without reading deprecated v14 enums.
+// effectSystem converts these internal operation codes to string change types.
+const EFFECT_MODES={ADD:2,OVERRIDE:5};
 const config=()=>{const saved=clone(game.settings.get(ID,"config"));const merged=foundry.utils.mergeObject(clone(DEFAULT_CONFIG),saved,{inplace:false});const customized=new Map(merged.sets.map(s=>[s.id,s]));merged.sets=[...CANONICAL_SETS.map(s=>customized.get(s.id)??clone(s)),...merged.sets.filter(s=>!CANONICAL_SETS.some(c=>c.id===s.id))];for(const set of merged.sets)for(const bonus of set.bonuses??[])bonus.stat=canonicalStat(bonus.stat);if(saved?.sub?.critDamageDice&&!saved?.sub?.critDamageBonus)merged.sub.critDamageBonus=saved.sub.critDamageDice;return merged};
 export function sheetCriticalThreshold(actor){
   const thresholds=[];
@@ -133,7 +136,7 @@ class PlanarWindow extends Application{
     html.find("[data-lushaka-target]").on("change",e=>send("target",{actorId:this.actorId,itemId:e.currentTarget.closest("[data-item]").dataset.item,targetActorId:e.currentTarget.value}));
     html.find("[data-op]").on("click",async e=>{const op=e.currentTarget.dataset.op,a=selectActor(this.actorId);
       if(op==="settings")return new ConfigWindow().render(true);
-      if(op==="designer")return new PlanarDesigner().render(true);
+      if(op==="designer")return new PlanarDesigner().render({force:true});
       if(op==="generate")return send(op,{actorId:a?.id,setId:html.find("[data-set]").val(),slot:html.find("[data-slot]").val()});
       const card=e.currentTarget.closest("[data-item]");if(!card)return;
       if(op==='delete'){
@@ -150,18 +153,20 @@ class PlanarWindow extends Application{
     })}
   async _updateObject(){}
 }
-class PlanarDesigner extends Application{
-  static get defaultOptions(){return foundry.utils.mergeObject(super.defaultOptions,{id:'telys-planar-designer',title:'Planar Set Display Designer',width:720,height:750,resizable:true})}
+class PlanarDesigner extends foundry.applications.api.ApplicationV2{
+  static DEFAULT_OPTIONS={id:'telys-planar-designer',tag:'section',classes:['tp-planar-designer'],window:{title:'Planar Set Display Designer',resizable:true,icon:'fas fa-circle-nodes'},position:{width:720,height:750}};
+  async _renderHTML(){return (await this._renderInner())[0]}
+  _replaceHTML(result,content){content.replaceChildren(result)}
   async _renderInner(){if(!game.user.isGM)return $('<p>GM access required.</p>');
     const cfg=config(),sets=cfg.sets,set=sets.find(s=>s.id===this.setId)??sets[0];this.setId=set?.id;this.defaults??=clone(cfg.defaultLayout);
     const preview={...set,layout:this.layouts?.[set.id]??set.layout};const layout=layoutFor(preview,this.defaults);
     const controls=['sphere','rope'].map(slot=>`<fieldset data-layout-slot="${slot}"><legend>${slot==='sphere'?'Sphere':'Link Rope'}</legend>${['x','y','scale'].map(key=>`<label>${key.toUpperCase()} <input type="number" step="0.1" data-layout-value="${slot}:${key}" value="${number(layout[slot][key])}"></label>`).join('')}<button type="button" data-apply-default="${slot}">Apply ${slot==='sphere'?'Sphere':'Link Rope'} to all sets</button></fieldset>`).join('');
     return $(`<div class="tp-window tp-designer"><label>Planar set <select data-designer-set>${sets.map(s=>htmlOption(s.id,s.name,set?.id)).join('')}</select></label><p>Drag the Sphere or Rope to place it. Scroll over either image to resize it. Apply either piece to all sets to make its layout the default for new sets, too.</p>${visualHtml(preview,esc,{equipped:true,designer:true,defaultLayout:this.defaults})}<div class="tp-designer-controls">${controls}</div><button type="button" data-designer-save>Save set layouts</button></div>`)
   }
-  activateListeners(html){super.activateListeners(html);if(!game.user.isGM)return;
+  _onRender(context,options){super._onRender(context,options);if(!game.user.isGM)return;const html=$(this.element);
     const remember=()=>{this.layouts??={};const set=this.layouts[this.setId]??=layoutFor(config().sets.find(s=>s.id===this.setId),this.defaults);for(const input of html[0].querySelectorAll('[data-layout-value]')){const [slot,key]=input.dataset.layoutValue.split(':');set[slot][key]=number(input.value,set[slot][key])}};
     const paint=()=>{const layout=this.layouts?.[this.setId];if(!layout)return;for(const slot of ['sphere','rope']){const image=html[0].querySelector(`.tp-${slot}`);if(image)image.style.cssText=pieceStyle(layout[slot])}};
-    html.find('[data-designer-set]').on('change',e=>{remember();this.setId=e.currentTarget.value;this.render(false)});
+    html.find('[data-designer-set]').on('change',e=>{remember();this.setId=e.currentTarget.value;this.render({force:false})});
     html.find('[data-layout-value]').on('input',()=>{remember();paint()});
     html.find('[data-apply-default]').on('click',event=>{remember();const slot=event.currentTarget.dataset.applyDefault;const sets=config().sets.map(set=>({...set,layout:this.layouts?.[set.id]??set.layout}));const result=applyLayoutToAll(sets,slot,this.layouts[this.setId][slot],this.defaults);this.defaults=result.defaults;this.layouts=Object.fromEntries(result.sets.map(set=>[set.id,set.layout]));ui.notifications.info(`${slot==='sphere'?'Sphere':'Link Rope'} layout applied to all planar sets. Save set layouts to keep it.`)});
     const orbit=html[0].querySelector('.tp-orbit');
@@ -233,7 +238,7 @@ function syncPlanarStats(actor){
   return next;
 }
 export function planarStatChanges(b,cfg,actor){
-  const changes=[],mode=CONST.ACTIVE_EFFECT_MODES.ADD;
+  const changes=[],mode=EFFECT_MODES.ADD;
   const add=(key,value)=>{if(Number.isFinite(value)&&value!==0)changes.push({key:systemPath(key),mode,value:String(value),priority:30})};
   for(const key of ABILITIES)add(`system.abilities.${key}.value`,number(b[key]));
   for(const [stat,paths] of Object.entries({atkPct:['mwak','rwak','msak','rsak'].map(k=>`system.bonuses.${k}.attack`),atkFlat:['mwak','rwak','msak','rsak'].map(k=>`system.bonuses.${k}.attack`),hpPct:['system.attributes.hp.bonuses.overall'],hpFlat:['system.attributes.hp.bonuses.overall']}))
@@ -241,7 +246,7 @@ export function planarStatChanges(b,cfg,actor){
   const acBonus=Math.floor(number(b.defPct)+number(b.defFlat));
   const originalAc=foundry.utils.getProperty(actor?._source,'system.attributes.ac.bonus');
   if(acBonus){
-    if(originalAc==null||Number.isFinite(Number(originalAc)))changes.push({key:'system.attributes.ac.bonus',mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(number(originalAc)+acBonus),priority:30});
+    if(originalAc==null||Number.isFinite(Number(originalAc)))changes.push({key:'system.attributes.ac.bonus',mode:EFFECT_MODES.OVERRIDE,value:String(number(originalAc)+acBonus),priority:30});
     else add('system.attributes.ac.bonus',acBonus);
   }
   const walkPath=systemPath('system.attributes.movement.walk');
@@ -249,7 +254,7 @@ export function planarStatChanges(b,cfg,actor){
   const speedBonus=cfg.mapping.speed==='system.attributes.movement.walk'?number(b.speed)*number(cfg.flat?.speed,1):0;
   const speedPercent=cfg.mapping.speedPct==='system.attributes.movement.walk'?number(b.speedPct)*number(cfg.flat?.speedPct,1):0;
   const movementBonus=speedBonus+Math.floor(originalWalk*speedPercent/100);
-  if(movementBonus)changes.push({key:walkPath,mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(originalWalk+movementBonus),priority:30});
+  if(movementBonus)changes.push({key:walkPath,mode:EFFECT_MODES.OVERRIDE,value:String(originalWalk+movementBonus),priority:30});
   for(const [stat,value] of Object.entries(b)){
     if([...ABILITIES,'atkPct','atkFlat','hpPct','hpFlat','defPct','defFlat','breakEffect','energyRegen'].includes(stat))continue;
     if(['speed','speedPct'].includes(stat)&&cfg.mapping[stat]==='system.attributes.movement.walk')continue;
@@ -265,7 +270,7 @@ export function planarStatChanges(b,cfg,actor){
 function standardStatEffects(actor){
   const cfg=config(),b=bonuses(allItems(actor),cfg);for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
   const changes=planarStatChanges(b,cfg,actor),hsrChanges=[];
-  for(const [stat,field] of [['breakEffect','breakEffectScore'],['energyRegen','regenScore']]){const boost=Math.floor(number(b[stat]));if(boost)hsrChanges.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,number(foundry.utils.getProperty(actor._source,`flags.${HSR_ID}.ultimate.${field}`),10)+boost))),priority:50});}
+  for(const [stat,field] of [['breakEffect','breakEffectScore'],['energyRegen','regenScore']]){const boost=Math.floor(number(b[stat]));if(boost)hsrChanges.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,number(foundry.utils.getProperty(actor._source,`flags.${HSR_ID}.ultimate.${field}`),10)+boost))),priority:50});}
   return [{name:'Standard planar bonuses',system:effectSystem(changes)},{name:'Standard Star Rail bonuses',system:effectSystem(hsrChanges)}];
 }
 export async function applyPlanarStatEffect(actor){
@@ -289,7 +294,7 @@ export async function applyHsrBonuses(actor){
   for(const [stat,field] of [["breakEffect","breakEffectScore"],["energyRegen","regenScore"]]){
     const boost=Math.floor(number(b[stat]));if(!boost)continue;
     const base=number(foundry.utils.getProperty(actor._source,`flags.${HSR_ID}.ultimate.${field}`),10);
-    changes.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:CONST.ACTIVE_EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,base+boost))),priority:50});
+    changes.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,base+boost))),priority:50});
   }
   const existing=actor.effects.find(e=>e.getFlag(ID,"hsrBonus"));
   if(!changes.length){if(existing)await existing.delete();return}
@@ -398,7 +403,7 @@ function injectHub(app,html){
     'planar-relics':()=>open(),
     'planar-config':()=>new ConfigWindow().render(true),
     'planar-generate':openGenerator,
-    'planar-designer':()=>new PlanarDesigner().render(true)
+    'planar-designer':()=>new PlanarDesigner().render({force:true})
   };
   for(const button of field.querySelectorAll('[data-hub-action^="planar-"]'))if(!game.user.isGM&&button.dataset.hubAction!=='planar-relics')button.hidden=true;
   if(field._telysPlanarActionsInstalled)return;
