@@ -5,6 +5,7 @@ import {CANONICAL_SETS} from "./catalog.mjs";
 import {visualHtml,layoutFor,pieceStyle,applyLayoutToAll} from "./visuals.mjs";
 import {dynamicStats,registerConditionHooks,firstAttackBonus} from './effects.mjs';
 import {storedRelics,asItem,ownerOf,equippedRelics,allItems,mergeLegacyRelics} from './inventory.mjs';
+import {pathCatalog,activePath,pathProfiles,assignmentPaths,assignedTo,assignRelic} from './path-loadouts.mjs';
 import {ID,ABILITIES,STATS,SPHERE,ROPE,SUBSTATS,LABELS,DEFAULT_CONFIG,number,currencyCost,random,generate,generateCustom,customSubstatSlots,advance,bonuses,mainValue,criticalThreshold,critBonusSources,splitInputs,canonicalStat} from "./core.mjs";
 const clone=x=>foundry.utils.deepClone(x);
 const esc=s=>foundry.utils.escapeHTML(String(s??""));
@@ -64,6 +65,7 @@ async function processRequest({op,data,user},remote=false){
   const key='shared-collection';if(pending.has(key))return ui.notifications.warn("Planar transaction already in progress.");
   pending.add(key);
   try{
+    if(actor&&pathCatalog(actor).pending)throw Error('Finish or recover the character’s Path change before editing equipment.');
     const cfg=config();
     if(op==="generate"||op==='generateCustom'){
       if(remote||!requester.isGM)throw Error("Only a local GM can generate relics.");
@@ -76,9 +78,7 @@ async function processRequest({op,data,user},remote=false){
       const inventory=clone(storedRelics()),index=inventory.findIndex(entry=>entry.id===data.itemId),entry=inventory[index],r=entry?.relic;
       if(!r)throw Error('Relic not found in the shared Planar collection.');
       if(op==="equip"){
-        if(data.equipped){for(const other of inventory)if(other.equippedActorId===actor.id&&other.relic.slot===r.slot)other.equippedActorId=null;if(entry.equippedActorId!==actor.id)entry.relic.targetActorId=null;entry.equippedActorId=actor.id}
-        else if(entry.equippedActorId===actor.id)entry.equippedActorId=null;
-        else throw Error('This relic is equipped by a different character.');
+        assignRelic(inventory,entry,actor,data.pathId??activePath(actor),data.equipped===true);
         await game.settings.set(ID,'relics',inventory);
       }else if(op==='delete'){
         if(remote||!requester.isGM)throw Error('Only the GM can delete planar ornaments.');
@@ -86,8 +86,9 @@ async function processRequest({op,data,user},remote=false){
         await game.settings.set(ID,'relics',inventory);
       }else if(op==="target"){
         const target=game.actors.get(data.targetActorId);
-        if(r.setId!=="317"||entry.equippedActorId!==actor.id||!target||target.type!=="character"||target.id===actor.id)throw Error("Choose a different character for Lushaka.");
-        entry.relic.targetActorId=target.id;await game.settings.set(ID,'relics',inventory);
+        const pathId=data.pathId??activePath(actor);
+        if(r.setId!=="317"||!assignedTo(entry,actor,pathId)||!target||target.type!=="character"||target.id===actor.id)throw Error("Choose a different character for Lushaka.");
+        entry.pathTargets??={};entry.pathTargets[pathId]=target.id;await game.settings.set(ID,'relics',inventory);
       }else if(op==="upgrade"){
         if(r.level>=15)throw Error("Already at +15.");
         const spend=data.materials??{},lines=[],xp=Object.entries(spend).reduce((total,[uuid,qty])=>{
@@ -113,27 +114,31 @@ function selectActor(id){return game.actors.get(id)||token()||actors()[0]}
 class PlanarWindow extends Application{
   static get defaultOptions(){return foundry.utils.mergeObject(super.defaultOptions,{id:"telys-planar-window",title:"Planar Ornaments",width:940,height:740,resizable:true,submitOnChange:false})}
   async _renderInner(){const a=selectActor(this.actorId),cfg=config();this.actorId=a?.id;
-    const inventory=storedRelics(),list=inventory.map(asItem);
-    const cards=list.map(i=>{const r=relic(i),entry=inventory.find(x=>x.id===i.id),wearer=ownerOf(entry),isWorn=wearer?.id===a?.id,set=cfg.sets.find(s=>s.id===r.setId),value=mainValue(r,cfg);
+    const profiles=pathProfiles(a);if(this.pathId===this.lastActivePathId||!profiles.some(p=>p.id===this.pathId))this.pathId=activePath(a);this.lastActivePathId=activePath(a);
+    const selectedPath=profiles.find(p=>p.id===this.pathId),inventory=storedRelics(),list=inventory.map(entry=>asItem(entry,ownerOf(entry),entry.equippedActorId===a?.id?this.pathId:undefined));
+    const cards=list.map(i=>{const r=relic(i),entry=inventory.find(x=>x.id===i.id),wearer=ownerOf(entry),isWorn=assignedTo(entry,a,this.pathId),set=cfg.sets.find(s=>s.id===r.setId),value=mainValue(r,cfg);
+      const assignments=wearer?pathProfiles(wearer).filter(p=>assignmentPaths(entry,wearer).includes(p.id)):[];
+      const badges=assignments.map(p=>`<img class="tp-wearer ${p.active?'is-active':'is-inactive'}" data-equipped-path="${esc(p.id)}" src="${esc(p.icon)}" title="${esc(wearer.name)} · ${esc(p.name)}${p.active?' · Active Path':' · Inactive Path'}" alt="Equipped for ${esc(p.name)}">`).join('');
       const materials=cfg.materials.map(m=>`<label class="tp-material">${esc(m.name||game.items.get(m.uuid.split('.').at(-1))?.name||m.uuid)} (${esc(m.xp)} XP; owned ${sum(a,m.uuid)}) <input type="number" min="0" max="${sum(a,m.uuid)}" value="0" data-material="${esc(m.uuid)}"></label>`).join("");
       const recipient=r.setId==="317"&&isWorn?`<label>Lushaka buff recipient <select data-lushaka-target><option value="">Choose character</option>${game.actors.filter(x=>x.type==="character"&&x.id!==a.id).map(x=>htmlOption(x.id,x.name,r.targetActorId)).join("")}</select></label>`:"";
       const details=`${i.name} +${r.level} · ${LABELS[r.main]} ${value.toFixed(2)} · ${r.sub.map(s=>`${LABELS[s.key]} +${number(s.value)}`).join(', ')||'No substats yet'}`;
-      return `<article class="tp-card ${this.selectedRelicId===i.id?'tp-selected':''}" data-item="${i.id}" data-filter-set="${esc(r.setId)}" data-filter-slot="${esc(r.slot)}" data-filter-worn="${wearer?'yes':'no'}" data-filter-wearer="${esc(wearer?.id??'')}" title="${esc(details)}" tabindex="0"><div class="tp-relic-art"><img src="${esc(i.img)}" alt="${esc(i.name)}">${wearer?`<img class="tp-wearer" src="${esc(wearer.prototypeToken?.texture?.src||wearer.img)}" title="Equipped by ${esc(wearer.name)}" alt="${esc(wearer.name)}">`:''}</div><div><h3>${esc(i.name)} <small>+${r.level}</small></h3><p>${esc(LABELS[r.main])}: ${value.toFixed(2)}${r.main==="speed"?" ft":""}</p><p>${r.sub.map(s=>`${esc(LABELS[s.key])} +${number(s.value).toFixed(2)}`).join(" · ")||"No substats yet"}</p><div class="tp-card-actions"><p>${wearer?`Equipped by ${esc(wearer.name)}`:'Unequipped'}</p><button type="button" data-op="equip" data-equipped="${!isWorn}">${isWorn?'Unequip':`Equip for ${esc(a?.name??'character')}`}</button>${recipient}${r.level<15?`<details><summary>Upgrade · ${r.xp}/${cfg.xpPerLevel} XP</summary>${materials}<p>Cost: 1 ${esc(game.items.get(cfg.currencyItem?.split('.').at(-1))?.name||'currency item')} per ${number(cfg.currencyXp,1)} XP · owned ${sum(a,cfg.currencyItem)}</p><button type="button" data-op="upgrade">Spend selected materials</button></details>`:"<p>Maximum level</p>"}${game.user.isGM?'<button type="button" data-op="delete" class="tp-delete-relic"><i class="fas fa-trash"></i> Delete ornament</button>':''}</div></div></article>`
+      return `<article class="tp-card ${this.selectedRelicId===i.id?'tp-selected':''}" data-item="${i.id}" data-filter-set="${esc(r.setId)}" data-filter-slot="${esc(r.slot)}" data-filter-worn="${wearer?'yes':'no'}" data-filter-wearer="${esc(wearer?.id??'')}" title="${esc(details)}" tabindex="0"><div class="tp-relic-art"><img src="${esc(i.img)}" alt="${esc(i.name)}"><span class="tp-path-assignments">${badges}</span></div><div><h3>${esc(i.name)} <small>+${r.level}</small></h3><p>${esc(LABELS[r.main])}: ${value.toFixed(2)}${r.main==="speed"?" ft":""}</p><p>${r.sub.map(s=>`${esc(LABELS[s.key])} +${number(s.value).toFixed(2)}`).join(" · ")||"No substats yet"}</p><div class="tp-card-actions"><p>${wearer?`Equipped by ${esc(wearer.name)} · ${assignments.map(p=>esc(p.name)).join(', ')}`:'Unequipped'}</p><button type="button" data-op="equip" data-equipped="${!isWorn}">${isWorn?'Unequip':`Equip for ${esc(a?.name??'character')} · ${esc(selectedPath?.name??'')}`}</button>${recipient}${r.level<15?`<details><summary>Upgrade · ${r.xp}/${cfg.xpPerLevel} XP</summary>${materials}<p>Cost: 1 ${esc(game.items.get(cfg.currencyItem?.split('.').at(-1))?.name||'currency item')} per ${number(cfg.currencyXp,1)} XP · owned ${sum(a,cfg.currencyItem)}</p><button type="button" data-op="upgrade">Spend selected materials</button></details>`:"<p>Maximum level</p>"}${game.user.isGM?'<button type="button" data-op="delete" class="tp-delete-relic"><i class="fas fa-trash"></i> Delete ornament</button>':''}</div></div></article>`
     }).join("");
     const gm='';
-    const activeSet=cfg.sets.find(s=>['sphere','rope'].every(slot=>inventory.some(i=>i.equippedActorId===a?.id&&i.relic.setId===s.id&&i.relic.slot===slot)));
-    const wornSet=cfg.sets.find(s=>inventory.some(i=>i.equippedActorId===a?.id&&i.relic.setId===s.id));
+    const activeSet=cfg.sets.find(s=>['sphere','rope'].every(slot=>inventory.some(i=>assignedTo(i,a,this.pathId)&&i.relic.setId===s.id&&i.relic.slot===slot)));
+    const wornSet=cfg.sets.find(s=>inventory.some(i=>assignedTo(i,a,this.pathId)&&i.relic.setId===s.id));
     const chosen=cfg.sets.find(s=>s.id===this.selectedSetId)??activeSet??wornSet??cfg.sets[0];
-    const visibleSlots=['sphere','rope'].filter(slot=>inventory.some(i=>i.equippedActorId===a?.id&&i.relic.setId===chosen?.id&&i.relic.slot===slot));
+    const visibleSlots=['sphere','rope'].filter(slot=>inventory.some(i=>assignedTo(i,a,this.pathId)&&i.relic.setId===chosen?.id&&i.relic.slot===slot));
     const preview=`<div class="tp-stage">${visualHtml(chosen,esc,{equipped:activeSet?.id===chosen?.id,defaultLayout:cfg.defaultLayout,visibleSlots})}<div class="tp-stage-info"><h3>Planar Ornaments</h3><label>Display set <select data-preview-set>${cfg.sets.map(s=>htmlOption(s.id,s.name,chosen?.id)).join('')}</select></label><p>${esc(chosen?.adaptedEffect??'Equip a matching Sphere and Link Rope for the two-piece bonus.')}</p><p>${activeSet?.id===chosen?.id?'Matching set equipped':'Equip matching pieces to activate this set.'}</p></div></div>`;
-    return $(`<div class="tp-window tp-main"><header><h2>Planar Ornaments · Shared Collection</h2><select data-actor>${actors().map(x=>htmlOption(x.id,x.name,a?.id)).join("")}</select></header>${gm}${preview}<div class="tp-relic-filters"><label>Set <select data-filter-set><option value="">All sets</option>${cfg.sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select data-filter-slot><option value="">Both</option><option value="sphere">Spheres</option><option value="rope">Link Ropes</option></select></label><label>Status <select data-filter-worn><option value="">All</option><option value="yes">Equipped</option><option value="no">Unequipped</option></select></label><label>Equipped by <select data-filter-wearer><option value="">Anyone</option>${game.actors.filter(x=>x.type==='character'&&inventory.some(i=>i.equippedActorId===x.id)).map(x=>htmlOption(x.id,x.name)).join('')}</select></label></div><div class="tp-grid">${cards||"<p>No planar ornaments have been generated yet.</p>"}</div></div>`)}
-  activateListeners(html){super.activateListeners(html);html.find("[data-actor]").on("change",e=>{this.actorId=e.target.value;this.selectedSetId=null;this.render(false)});
+    return $(`<div class="tp-window tp-main"><header><h2>Planar Ornaments · Shared Collection</h2><select data-actor>${actors().map(x=>htmlOption(x.id,x.name,a?.id)).join("")}</select><label>Path loadout <select data-equipment-path>${profiles.map(p=>htmlOption(p.id,p.name+(p.active?' · Active':''),this.pathId)).join('')}</select></label></header><p class="tp-path-status">Editing ${esc(selectedPath?.name??'character')} equipment. ${selectedPath?.active?'This Path is active.':'These bonuses apply only while this Path is active.'}</p>${gm}${preview}<div class="tp-relic-filters"><label>Set <select data-filter-set><option value="">All sets</option>${cfg.sets.map(s=>htmlOption(s.id,s.name)).join('')}</select></label><label>Piece <select data-filter-slot><option value="">Both</option><option value="sphere">Spheres</option><option value="rope">Link Ropes</option></select></label><label>Status <select data-filter-worn><option value="">All</option><option value="yes">Equipped</option><option value="no">Unequipped</option></select></label><label>Equipped by <select data-filter-wearer><option value="">Anyone</option>${game.actors.filter(x=>x.type==='character'&&inventory.some(i=>i.equippedActorId===x.id)).map(x=>htmlOption(x.id,x.name)).join('')}</select></label></div><div class="tp-grid">${cards||"<p>No planar ornaments have been generated yet.</p>"}</div></div>`)}
+  activateListeners(html){super.activateListeners(html);html.find("[data-actor]").on("change",e=>{this.actorId=e.target.value;this.pathId=null;this.selectedSetId=null;this.render(false)});
+    html.find('[data-equipment-path]').on('change',e=>{this.pathId=e.target.value;this.selectedSetId=null;this.render(false)});
     const filter=()=>{for(const card of html[0].querySelectorAll('.tp-card'))card.hidden=[['set','filterSet'],['slot','filterSlot'],['worn','filterWorn'],['wearer','filterWearer']].some(([key,field])=>{const choice=html[0].querySelector(`[data-filter-${key}]`)?.value;return choice&&card.dataset[field]!==choice})};
     html.find('.tp-relic-filters select').on('change',filter);
     html.find('.tp-card').on('click keydown',e=>{if(e.type==='keydown'&&!['Enter',' '].includes(e.key))return;if(e.target.closest('button,select,input,details,label'))return;this.selectedRelicId=e.currentTarget.dataset.item;html.find('.tp-card').removeClass('tp-selected');e.currentTarget.classList.add('tp-selected')});
     html.find("[data-preview-set]").on("change",e=>{this.selectedSetId=e.currentTarget.value;this.render(false)});
     html.find("[data-trailblaze]").on("change",async e=>{if(!game.user.isGM)return;const actor=selectActor(this.actorId);if(actor){await actor.setFlag(ID,"trailblazeCompanion",e.currentTarget.checked);for(const a of game.actors)if(a.type==="character")a.reset()}});
-    html.find("[data-lushaka-target]").on("change",e=>send("target",{actorId:this.actorId,itemId:e.currentTarget.closest("[data-item]").dataset.item,targetActorId:e.currentTarget.value}));
+    html.find("[data-lushaka-target]").on("change",e=>send("target",{actorId:this.actorId,pathId:this.pathId,itemId:e.currentTarget.closest("[data-item]").dataset.item,targetActorId:e.currentTarget.value}));
     html.find("[data-op]").on("click",async e=>{const op=e.currentTarget.dataset.op,a=selectActor(this.actorId);
       if(op==="settings")return new ConfigWindow().render(true);
       if(op==="designer")return new PlanarDesigner().render({force:true});
@@ -146,7 +151,7 @@ class PlanarWindow extends Application{
         this.selectedRelicId=null;
         return send('delete',{actorId:a?.id,itemId:card.dataset.item});
       }
-      const data={actorId:a.id,itemId:card.dataset.item};
+      const data={actorId:a.id,pathId:this.pathId,itemId:card.dataset.item};
       if(op==="equip")data.equipped=e.currentTarget.dataset.equipped==="true";
       if(op==="upgrade")data.materials=Object.fromEntries([...card.querySelectorAll("[data-material]")].map(el=>[el.dataset.material,el.value]));
       await send(op,data);
@@ -277,7 +282,8 @@ export async function applyPlanarStatEffect(actor){
   if(!game.user.isGM||actor?.type!=='character')return;
   const cfg=config(),b=bonuses(allItems(actor),cfg);
   for(const [key,value] of Object.entries(dynamicStats(actor,cfg)))b[key]=(b[key]??0)+value;
-  const changes=planarStatChanges(b,cfg,actor),existing=actor.effects.find(e=>e.getFlag(ID,'statBonus'));
+  const changes=planarStatChanges(b,cfg,actor),[existing,...duplicates]=actor.effects.filter(e=>e.getFlag(ID,'statBonus'));
+  for(const effect of duplicates)await effect.delete();
   if(!changes.length){if(existing)await existing.delete();return}
   if(existing){if(JSON.stringify(effectChanges(existing))!==JSON.stringify(changes))await existing.update({'system.changes':effectSystem(changes).changes});return}
   await actor.createEmbeddedDocuments('ActiveEffect',[{name:'Planar ornament bonuses',img:'icons/magic/light/orb-sphere-gold.webp',system:effectSystem(changes),disabled:false,flags:{[ID]:{statBonus:true}}}]);
@@ -296,7 +302,8 @@ export async function applyHsrBonuses(actor){
     const base=number(foundry.utils.getProperty(actor._source,`flags.${HSR_ID}.ultimate.${field}`),10);
     changes.push({key:`flags.${HSR_ID}.ultimate.${field}`,mode:EFFECT_MODES.OVERRIDE,value:String(Math.max(1,Math.min(30,base+boost))),priority:50});
   }
-  const existing=actor.effects.find(e=>e.getFlag(ID,"hsrBonus"));
+  const [existing,...duplicates]=actor.effects.filter(e=>e.getFlag(ID,"hsrBonus"));
+  for(const effect of duplicates)await effect.delete();
   if(!changes.length){if(existing)await existing.delete();return}
   if(existing){if(JSON.stringify(effectChanges(existing))!==JSON.stringify(changes))await existing.update({'system.changes':effectSystem(changes).changes});return}
   await actor.createEmbeddedDocuments("ActiveEffect",[{name:HSR_EFFECT_NAME,img:"icons/magic/light/orb-sphere-gold.webp",system:effectSystem(changes),disabled:false,flags:{[ID]:{hsrBonus:true}}}]);
@@ -444,7 +451,7 @@ function injectPlanarSheetTab(app,root,actor){
   const group=nav.dataset.group||nav.querySelector('[data-group]')?.dataset.group||'primary';
   const tab=document.createElement('a');tab.className='item control tp-sheet-tab';tab.dataset.action='tab';tab.dataset.tab='telys-planar';tab.dataset.group=group;tab.setAttribute('role','tab');tab.setAttribute('aria-label','Planar Relics');tab.title='Planar Relics';tab.innerHTML='<i class="fas fa-circle-nodes" aria-hidden="true"></i>';
   const panel=document.createElement('section');panel.className='tab tp-sheet-panel';panel.dataset.tab='telys-planar';panel.dataset.group=group;panel.hidden=true;
-  const cfg=config(),pieces=storedRelics().map(asItem),equipped=equippedRelics(actor);
+  const cfg=config(),pieces=storedRelics().map(entry=>asItem(entry)),equipped=equippedRelics(actor);
   const selected=cfg.sets.find(s=>equipped.some(i=>relic(i)?.setId===s.id))??cfg.sets[0];
   const slots=['sphere','rope'].map(slot=>{
     const worn=equipped.find(i=>relic(i)?.slot===slot);
@@ -452,7 +459,7 @@ function injectPlanarSheetTab(app,root,actor){
     return `<section><h3>${slot==='sphere'?'Planar Sphere':'Link Rope'}</h3>${choices||'<p>No relics in this slot.</p>'}</section>`;
   }).join('');
   const visibleSlots=['sphere','rope'].filter(slot=>equipped.some(i=>{const r=relic(i);return r?.setId===selected?.id&&r.slot===slot}));
-  panel.innerHTML=`<div class="tp-sheet-content"><h2>Planar Relics</h2>${selected?visualHtml(selected,esc,{equipped:visibleSlots.length===2,defaultLayout:cfg.defaultLayout,visibleSlots}):''}<div class="tp-sheet-slots">${slots}</div><button type="button" data-planar-open>Open upgrades and set details</button></div>`;
+  panel.innerHTML=`<div class="tp-sheet-content"><h2>Planar Relics · ${esc(pathProfiles(actor).find(p=>p.active)?.name??actor.name)}</h2>${selected?visualHtml(selected,esc,{equipped:visibleSlots.length===2,defaultLayout:cfg.defaultLayout,visibleSlots}):''}<div class="tp-sheet-slots">${slots}</div><button type="button" data-planar-open>Open upgrades and set details</button></div>`;
   panel.addEventListener('click',event=>event.stopPropagation());
   panel.querySelector('[data-planar-open]').addEventListener('click',()=>open(actor.id));
   panel.querySelectorAll('[data-planar-equip]').forEach(button=>button.addEventListener('click',async event=>{
@@ -589,6 +596,15 @@ Hooks.once("ready",async()=>{
     opts.criticalSuccess=hasOverride?snapshot.threshold:criticalThreshold(base,snapshot.bonus+extra);
   });game.socket.on(`module.${ID}`,msg=>{if(game.user.isGM&&game.users.filter(u=>u.isGM&&u.active).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id)processRequest(msg,true)});
   window.TelysPlanar={open,openConfig:()=>new ConfigWindow().render(true),generate,advance,bonuses,mainValue,criticalSnapshot,combatBuffSupport:true,standardStatEffects,syncCombatStats:async actor=>{await syncPlanarStats(actor);await syncHsrBonuses(actor)},app:null};
+  Hooks.on('tsruPathChanged',actor=>{
+    if(pathCatalog(actor).pending)return;
+    for(const member of game.actors)if(member.type==='character'){
+      member.reset();
+      if(game.user.isGM)void window.TelysPlanar.syncCombatStats(member).catch(error=>console.error(`${ID} | Path equipment sync`,error));
+      if(member.sheet?.rendered)member.sheet.render(false);
+    }
+    window.TelysPlanar.app?.render(false);
+  });
   Hooks.on("renderApplication",(app,html)=>{injectHub(app,html);injectHubConfig(app,html)});
   Hooks.on('renderApplicationV2',(app,html)=>{injectHub(app,html);injectHubConfig(app,html);injectSheet(app,html);requestAnimationFrame(()=>{injectHub(app,app.element);injectHubConfig(app,app.element);injectSheet(app,app.element)})});
   Hooks.on("renderActorSheet",injectSheet);

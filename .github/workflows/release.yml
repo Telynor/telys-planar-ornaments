@@ -1,7 +1,7 @@
 name: Build Planar Ornament Release
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/audit-*']
   workflow_dispatch:
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: planar-designer
-          path: artifacts/planar-designer.png
+          path: artifacts/*.png
           if-no-files-found: ignore
       - name: Read version
         id: version
@@ -33,6 +33,7 @@ jobs:
       - name: Build package
         run: zip -r telys-planar-ornaments.zip module.json README.md ASSETS-AGPL-3.0.txt assets scripts styles
       - name: Publish release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -1,5 +1,14 @@
 # Tely's Planar Ornaments
 
+## Equipment for each character Path (1.0.19)
+
+With Ultimates preview.30, open Planar Relics and choose **Path loadout** to configure each saved build's Sphere and Link Rope. Equipped badges use its configured Path icon (or token/preview art when no icon is configured), identify the build by name, and show whether it is active. The sheet's Planar display follows the active build.
+
+Several saved sets can remain assigned to the same character. Only the active Path's pieces grant main stats, substats, set bonuses, damage, crit, Energy Regen and party effects. Editing an inactive build does not activate its bonuses. A shared piece may be assigned to multiple Paths, retaining its existing upgrades and rolls. Changing one Path's slot preserves the others. Legacy assignments belong to the original build until changed. Lushaka recipients can differ by Path.
+
+Update Ultimates to **3.14.0-preview.30** for per-Path Light Cone selection as well. Inventory and item charges remain shared.
+
+
 ## Update 1.0.18 — Foundry v14 startup and designer
 
 Fixed the startup exception `You must provide a menu type that is a FormApplication or ApplicationV2 instance or subclass`. The Set Display Designer is now an ApplicationV2 with native render options, content replacement and render lifecycle handling. Existing drag, scale, set-switching, apply-to-all and save behavior is retained.

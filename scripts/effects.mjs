@@ -1,5 +1,6 @@
 import {ID,number} from './core.mjs';
 import {equippedRelics} from './inventory.mjs';
+import {activePath} from './path-loadouts.mjs';
 const walk=actor=>number((actor?.system?.attributes?.movement?.speeds??actor?.system?.attributes?.movement)?.walk);
 const relic=item=>item.getFlag?.(ID,'relic')??item.flags?.[ID]?.relic;
 export function activeSets(actor){
@@ -40,7 +41,7 @@ export function dynamicStats(actor,config){
  if(sets.has('318')&&summoned(actor))add('critDamageBonus',2);
  if(sets.has('325')&&game.combat?.started&&game.modules.get('telys-star-rail-ultimates')?.active){const punchline=number(game.settings.get('telys-star-rail-ultimates','punchline'));if(punchline>=4)add('critDamageBonus',punchline>=8?2:1)}
  if(sets.has('328')){const max=number(hsr(actor).max);if(max>=59)add('damageFlat',2);else if(max>=41)add('damageFlat',1)}
- if(game.combat?.started&&game.combat.combatants.some(c=>c.actor?.id===actor.id)&&allyActors(actor).some(wearer=>subspaceWearers(game.combat).has(wearer.id)))add('breakEffect',1);
+ if(game.combat?.started&&game.combat.combatants.some(c=>c.actor?.id===actor.id)&&allyActors(actor).some(wearer=>subspaceWearers(game.combat).has(wearer.id)&&activeSets(wearer).has('329')))add('breakEffect',1);
  // Party buffs never multiply the same named nonstacking set.
  let lushaka=false,amphoreus=false;
  for(const wearer of game.actors??[]){if(wearer.type!=='character'||wearer.id===actor.id)continue;const wsets=activeSets(wearer);
@@ -71,7 +72,7 @@ export function conditionalDamage(actor,workflow){
 }
 
 const combatState=new Map();
-function state(actor){const combatId=game.combat?.id??'none';const key=`${combatId}:${actor.id}`;if(!combatState.has(key))combatState.set(key,{sigonia:0,sigoniaTurns:0,merit:0,tengokuTurns:0,cityTurns:0,cityParty:false});return combatState.get(key)}
+function state(actor){const combatId=game.combat?.id??'none';const key=`${combatId}:${actor.id}:${activePath(actor)}`;if(!combatState.has(key))combatState.set(key,{sigonia:0,sigoniaTurns:0,merit:0,tengokuTurns:0,cityTurns:0,cityParty:false});return combatState.get(key)}
 function fireWeak(target){
  const elements=game.modules.get('telys-star-rail-ultimates')?.active?game.settings.get('telys-star-rail-ultimates','elements'):[];
  const fireIds=new Set((elements??[]).filter(e=>/fire/i.test(e.name??e.id??'')).map(e=>e.id));fireIds.add('fire');
@@ -148,4 +149,5 @@ export function registerConditionHooks(){
  });
  Hooks.on('deleteCombat',combat=>{combatState.clear();subspaceCombatWearers.delete(combat.id);refresh()});
  Hooks.on('tsruPunchlineChanged',refresh);
+ Hooks.on('tsruPathChanged',()=>{subspaceCombatWearers.clear();for(const state of combatState.values())state.cityParty=false;refresh()});
 }
