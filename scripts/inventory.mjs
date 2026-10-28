@@ -2,7 +2,7 @@ import {ID} from './core.mjs';
 import {activePath,assignedTo,assignmentPaths} from './path-loadouts.mjs';
 
 export const storedRelics=()=>game.settings?.get?.(ID,'relics')??[];
-export const ownerOf=entry=>entry.equippedActorId?game.actors.get?.(entry.equippedActorId)??game.actors.find?.(a=>a.id===entry.equippedActorId):null;
+export const ownerOf=entry=>{const actor=entry.equippedActorId?game.actors.get?.(entry.equippedActorId)??game.actors.find?.(a=>a.id===entry.equippedActorId):null;return actor&&assignmentPaths(entry,actor).length?actor:null;};
 export const relicFor=(entry,actor=ownerOf(entry),pathId=activePath(actor))=>({...entry.relic,equipped:actor?assignedTo(entry,actor,pathId):!!entry.equippedActorId,targetActorId:entry.pathTargets?.[pathId]??entry.relic.targetActorId});
 export function asItem(entry,actor,pathId){
   const value=relicFor(entry,actor,pathId);

@@ -89,7 +89,7 @@ await openDesigner();window.booted=true;
     async function equip(id){await page.locator('[data-item="'+id+'"]').click();await page.locator('[data-item="'+id+'"] [data-op="equip"]').click();await page.waitForFunction(id=>values.get('relics').find(r=>r.id===id).equippedActorId==='hero',id);await page.evaluate(()=>loadouts.render(false));}
     await equip('set0-sphere');await equip('set0-rope');await page.locator('[data-equipment-path]').selectOption('ice');await page.waitForFunction(()=>loadouts.pathId==='ice');await equip('set1-sphere');await equip('set1-rope');
     assert.equal(await page.locator('[data-item="set0-sphere"] [data-equipped-path="hunt"]').count(),1);assert.equal(await page.locator('[data-item="set1-sphere"] [data-equipped-path="ice"]').count(),1);
-    assert.match(await page.locator('.tp-path-status').innerText(),/only while this Path is active/);assert.match(await page.locator('[data-item="set1-sphere"]').innerText(),/Ice build/);
+    assert.match(await page.locator('.tp-path-status').innerText(),/only while this Path is active/);assert.match(await page.locator('[data-item="set1-sphere"] [data-equipped-path="ice"]').getAttribute('title'),/Ice build/);
     await page.locator('[data-equipment-path]').selectOption('hunt');await page.waitForFunction(()=>loadouts.pathId==='hunt');await page.evaluate(async()=>{loadoutCatalog.activeId='ice';await loadouts.render(false)});
     assert.equal(await page.locator('[data-equipment-path]').inputValue(),'ice');assert.match(await page.locator('.tp-path-status').innerText(),/This Path is active/);
     await page.screenshot({path:path.join(output,'planar-path-loadouts.png')});

@@ -12,7 +12,8 @@ export function pathProfiles(actor){
 export function assignmentPaths(entry,actor){
   if(Array.isArray(entry.equippedPathIds)){const valid=new Set(pathProfiles(actor).map(p=>p.id));return entry.equippedPathIds.filter(id=>valid.has(id));}
   const catalog=pathCatalog(actor);
-  return [catalog.profiles?.find(p=>p.original)?.id??catalog.profiles?.[0]?.id??''];
+  if(!catalog.profiles?.length)return [''];
+  const original=catalog.profiles.find(p=>p.original);return original?[original.id]:[];
 }
 export const assignedTo=(entry,actor,pathId=activePath(actor))=>Boolean(actor)&&entry.equippedActorId===actor.id&&assignmentPaths(entry,actor).includes(pathId);
 export function assignRelic(inventory,entry,actor,pathId,equipped){

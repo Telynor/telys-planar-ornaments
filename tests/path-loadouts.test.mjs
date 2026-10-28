@@ -51,3 +51,6 @@ test('standalone Planar worlds never read unregistered Ultimates settings',()=>{
  const w=world();game.modules={get:()=>undefined};game.settings.get=(scope)=>{if(scope===HSR)throw Error('Unregistered setting');return w.collection};
  assert.doesNotThrow(()=>pathProfiles(w.actor));assert.doesNotThrow(()=>equippedRelics(w.actor));
 });
+test('removing the original Path cannot silently transfer its legacy relics to another build',()=>{
+ const w=world();w.collection[0].equippedActorId='hero';w.catalog.profiles.shift();w.catalog.activeId='ice';assert.equal(equippedRelics(w.actor).length,0);
+});
