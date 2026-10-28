@@ -1,5 +1,11 @@
 # Tely's Planar Ornaments
 
+## First-open character sheet layout (1.0.20)
+
+Fixes the Original/Buffed Stats helper placing a saving-throw summary directly in the D&D5e 6 details grid. Skills and Saving Throws now keep their native columns on the first opening. Native signed modifiers are updated inside the actual Saving Throws panel, including localized sheets, and any fallback summary stays inside that panel.
+
+The existing header toggle also rebinds when Foundry replaces only the sheet body, preserving the selected stats mode, editable base scores and pre-existing field locks. Repeated render hooks do not duplicate controls or move the layout. Character data and Path builds are unchanged; update Planar Ornaments and reload Foundry.
+
 ## Equipment for each character Path (1.0.19)
 
 With Ultimates preview.30, open Planar Relics and choose **Path loadout** to configure each saved build's Sphere and Link Rope. Equipped badges use its configured Path icon (or token/preview art when no icon is configured), identify the build by name, and show whether it is active. The sheet's Planar display follows the active build.

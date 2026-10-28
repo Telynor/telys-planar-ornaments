@@ -1,0 +1,36 @@
+const {JSDOM}=require('jsdom'),assert=require('node:assert/strict');
+(async()=>{
+  const {injectSheetStats,savingThrowPanel}=await import('../scripts/sheet-stats.mjs'),{detailsHTML,character}=await import('./fixtures/character-sheet.mjs');
+  const dom=new JSDOM('<main><section class="application"><header class="window-header"><nav data-tsru-actor-controls></nav></header><section class="tab col-2" data-tab="details"></section></section></main>');
+  globalThis.document=dom.window.document;globalThis.game={system:{version:'6.0.6'}};globalThis.foundry={utils:{getProperty:(object,path)=>path.split('.').reduce((value,key)=>value?.[key],object)}};
+  const root=document.querySelector('.application'),details=root.querySelector('.col-2'),controls=root.querySelector('nav'),actor=character();
+  const draw=options=>{details.innerHTML=detailsHTML(options);injectSheetStats(root,actor,controls);};
+  const toggle=()=>root.querySelector('.tp-ability-toggle').click();
+  const score=()=>details.querySelector('input[name="system.abilities.str.value"]');
+  const bonus=()=>details.querySelector('.saves [data-ability="str"] .bonus');
+  draw();
+  assert.deepEqual([...details.children].map(node=>node.className),['left','right'],'first-open grid keeps exactly its native columns');
+  assert.equal(savingThrowPanel(root),details.querySelector('filigree-box.saves'));
+  assert.equal(root.querySelector('.tp-original-saves'),null,'native signed modifier containers update without duplicate summaries');
+  assert.equal(score().value,'14');assert.equal(bonus().textContent,'+4');assert.equal(bonus().querySelector('.sign').textContent,'+');
+  for(let i=0;i<4;i++)injectSheetStats(root,actor,controls);
+  assert.equal(root.querySelectorAll('.tp-ability-toggle').length,1);
+  toggle();assert.equal(score().value,'18');assert.equal(score().readOnly,true);assert.equal(bonus().textContent,'+7');
+  draw({localized:true});assert.equal(score().value,'18');assert.equal(bonus().textContent,'+7');
+  toggle();assert.equal(score().value,'14');assert.equal(score().readOnly,false);assert.equal(bonus().textContent,'+4');
+  assert.equal(details.querySelector('input[aria-label="Energy Regen ability score"]').value,'10');
+  injectSheetStats(root,actor,controls);toggle();assert.equal(details.querySelector('input[aria-label="Energy Regen ability score"]').value,'14','repeat hooks preserve the buffed HSR score');
+  draw({missing:true});assert.equal(root.querySelector('.tp-original-saves').parentElement,details.querySelector('.saves'));assert.equal(root.querySelector('.tp-original-saves').hidden,true);
+  toggle();assert.equal(root.querySelector('.tp-original-saves').textContent,'CHA +4');assert.equal(root.querySelector('.tp-original-saves').hidden,false);
+  assert.deepEqual([...details.children].map(node=>node.className),['left','right']);
+  details.querySelector('.saves').remove();details.querySelector('.right').insertAdjacentHTML('afterbegin','<h3>Saving Throws</h3>');injectSheetStats(root,actor,controls);
+  assert.equal(savingThrowPanel(root),null,'a grid, tab or entire column is never used as the saves panel');assert.equal(root.querySelector('.tp-original-saves'),null);
+  draw();score().disabled=true;score().readOnly=true;root.querySelector('.tp-ability-toggle').remove();
+  // A newly created field's existing locks must survive either stats mode.
+  details.querySelector('input[name="system.abilities.dex.value"]').outerHTML='<input name="system.abilities.dex.value" value="18" readonly disabled>';
+  injectSheetStats(root,actor,controls);toggle();toggle();
+  assert.equal(details.querySelector('input[name="system.abilities.dex.value"]').disabled,true);assert.equal(details.querySelector('input[name="system.abilities.dex.value"]').readOnly,true);
+  draw({localized:true});for(let i=0;i<3;i++)injectSheetStats(root,actor,controls);toggle();
+  assert.equal(score().value,'18');assert.equal(root.querySelectorAll('.tp-ability-toggle').length,1);assert.equal(details.querySelectorAll('.saves .bonus').length,6);
+  dom.window.close();console.log('PASS: native first-open columns, localized filigree Saving Throws, signed native modifiers, contained fallback summaries, partial body replacement, retained header rebinding, repeated hooks, HSR scores and pre-existing input locks.');
+})().catch(error=>{console.error(error);process.exitCode=1});
