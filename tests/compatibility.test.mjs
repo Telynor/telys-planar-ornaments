@@ -41,6 +41,8 @@ test('planar effects are written in v14 format and system-generated IDs do not c
   await applyPlanarStatEffect(actor);assert.equal(creates,1);
   assert.ok(actor.effects[0].system.changes.some(c=>c.key==='system.rolls.attack.mwak.bonus'));
   await applyPlanarStatEffect(actor);assert.equal(creates,1);assert.equal(updates,0);
+  const duplicate={...actor.effects[0],async delete(){actor.effects.splice(actor.effects.indexOf(this),1)}};actor.effects.push(duplicate);
+  await applyPlanarStatEffect(actor);assert.equal(actor.effects.length,1,'legacy copied bonus effects cannot stack');assert.equal(updates,0);
 });
 test('legacy effect storage and v14 effect storage can both be read for migration',()=>{
   const c={key:'system.abilities.str.value',mode:2,value:'2',priority:30};
